@@ -1,0 +1,10 @@
+apiVersion: configuration.konghq.com/v1
+kind: KongIngress
+metadata:
+  name: {{ .Values.kongIngress.name }}
+  namespace: {{ .Values.namespace }}
+proxy:
+  connect_timeout: {{ .Values.kongIngress.connect_timeout }}
+  protocol: https
+  read_timeout: {{ .Values.kongIngress.read_timeout }}
+  write_timeout: {{ .Values.kongIngress.write_timeout }}
