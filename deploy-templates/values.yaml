@@ -11,6 +11,16 @@
 
 global:
   disableRequestsLimits: false
+  registry:
+    kong:
+      istio:
+        sidecar:
+          enabled: true
+          resources:
+            limits: {}
+            requests: {}
+      container:
+        resources: {}
 
 # -----------------------------------------------------------------------------
 # Deployment parameters
@@ -441,16 +451,6 @@ updateStrategy: {}
   #   maxSurge: "100%"
   #   maxUnavailable: "0%"
 
-# If you want to specify resources, uncomment the following
-# lines, adjust them as necessary, and remove the curly braces after 'resources:'.
-resources:
-  limits:
-    cpu: 300m
-    memory: 1Gi
-  requests:
-    cpu: 300m
-    memory: 1Gi
-
 # readinessProbe for Kong pods
 # If using Kong Enterprise with RBAC, you must add a Kong-Admin-Token header
 readinessProbe:
@@ -496,9 +496,7 @@ tolerations: []
 nodeSelector: {}
 
 # Annotation to be added to Kong pods
-podAnnotations:
-  sidecar.istio.io/inject: "true"
-  traffic.sidecar.istio.io/excludeOutboundPorts: '5432'
+podAnnotations: {}
 
 # Labels to be added to Kong pods
 podLabels: {}

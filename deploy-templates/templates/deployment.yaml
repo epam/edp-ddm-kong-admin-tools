@@ -27,6 +27,7 @@ spec:
 
   template:
     metadata:
+      {{- if or (.Values.podAnnotations) (.Values.global.registry.kong.istio.sidecar.enabled) (.Values.ingressController.admissionWebhook.enabled) (and (not .Values.ingressController.enabled) (eq .Values.env.database "off" )) }}
       annotations:
         {{- if .Values.ingressController.admissionWebhook.enabled }}
         checksum/admission-webhook.yaml: {{ include (print $.Template.BasePath "/admission-webhook.yaml") . | sha256sum }}
@@ -39,6 +40,12 @@ spec:
         {{- if .Values.podAnnotations }}
         {{- range $key, $value := .Values.podAnnotations }}
         {{ $key }}: {{ $value | quote }}
+        {{- end }}
+        {{- end }}
+        {{- if .Values.global.registry.kong.istio.sidecar.enabled }}
+        sidecar.istio.io/inject: "true"
+        traffic.sidecar.istio.io/excludeOutboundPorts: '5432'
+        {{- include "kong.istioResources" . | nindent 8 }}
         {{- end }}
         {{- end }}
       labels:
@@ -234,7 +241,7 @@ spec:
 {{ toYaml .Values.livenessProbe | indent 10 }}
         {{- if not .Values.global.disableRequestsLimits }}
         resources:
-{{ toYaml .Values.resources | indent 10 }}
+{{ toYaml .Values.global.registry.kong.container.resources | indent 10 }}
         {{- end }}
     {{- if .Values.affinity }}
       affinity:
