@@ -364,21 +364,21 @@ ingressController:
     failurePolicy: Fail
     port: 8080
 
-  ingressClass: kong
+  ingressClass: kong-admin-tools
 
   rbac:
     # Specifies whether RBAC resources should be created
     create: true
   clusterRole:
     create: true
-    name: kong-cluster-role
+    name: kong-admin-tools-cluster-role
 
   serviceAccount:
     # Specifies whether a ServiceAccount should be created
     create: true
     # The name of the ServiceAccount to use.
     # If not set and create is true, a name is generated using the fullname template
-    name: kong
+    name: kong-admin-tools
     # The annotations for service account
     annotations: {}
 
@@ -430,7 +430,7 @@ postgresql:
   postgresqlDatabase: kong
   serviceAccount:
     enabled: true
-    name: kong
+    name: kong-admin-tools
   securityContext:
     enabled: true
     runAsUser: 1001
@@ -787,7 +787,7 @@ extraSecrets: []
 #   subPath: my-subpath # Optional, if you wish to mount a single key and not the entire ConfigMap
 
 kongIngress:
-  name: kong-set-timeouts
+  name: kong-admin-tools-set-timeouts
   connect_timeout: 29000
   read_timeout: 29000
   write_timeout: 29000

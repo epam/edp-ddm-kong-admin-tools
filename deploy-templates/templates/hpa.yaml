@@ -1,11 +1,11 @@
+{{- if .Values.autoscaling.enabled }}
 {{- if not .Values.global.disableRequestsLimits }}
 kind: HorizontalPodAutoscaler
 apiVersion: autoscaling/v2beta2
 metadata:
-  name: {{ .Chart.Name }}
+  name: {{ template "kong.fullname" . }}-hpa
   labels:
-    app: {{ .Chart.Name }}
-    relatedNamespace: {{ .Release.Namespace }}
+    {{- include "kong.metaLabels" . | nindent 4 }}
 spec:
   scaleTargetRef:
     kind: Deployment
@@ -26,4 +26,5 @@ spec:
         target:
           type: Utilization
           averageUtilization: 90
+{{- end }}
 {{- end }}
