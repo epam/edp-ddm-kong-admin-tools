@@ -182,10 +182,7 @@ local function introspect(oidcConfig)
 end
 
 local function make_oidc(oidcConfig)
-  ngx.log(ngx.INFO, "OidcHandler calling authenticate, requested path: " .. ngx.var.request_uri)
-  if (oidcConfig.session_opts ~= nil) then
-    ngx.log(ngx.INFO, "Session options: " .. cjson.encode(oidcConfig.session_opts))
-  end
+  ngx.log(ngx.DEBUG, "OidcHandler calling authenticate, requested path: " .. ngx.var.request_uri)
   local res, err, target_url = require("resty.openidc").authenticate(oidcConfig, nil, oidcConfig.unauth_action, oidcConfig.session_opts)
   if err then
     ngx.log(ngx.DEBUG, "OidcHandler error: " .. err)

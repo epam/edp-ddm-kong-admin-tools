@@ -40,6 +40,7 @@ dependencies = {
   "lua-resty-counter == 0.2.1",
   "lua-resty-ipmatcher == 0.6",
   "lua-resty-openidc == 1.7.4",
+  "lua-resty-redis-connector == 0.11.0",
   -- external Kong plugins
   "kong-plugin-azure-functions ~> 1.0",
   "kong-plugin-zipkin ~> 1.2",
@@ -385,6 +386,7 @@ build = {
     ["kong.plugins.oidc.handler"] = "kong/plugins/oidc/handler.lua",
     ["kong.plugins.oidc.schema"] = "kong/plugins/oidc/schema.lua",
     ["kong.plugins.oidc.session"] = "kong/plugins/oidc/session.lua",
-    ["kong.plugins.oidc.utils"] = "kong/plugins/oidc/utils.lua"
+    ["kong.plugins.oidc.utils"] = "kong/plugins/oidc/utils.lua",
+    ["resty.session.storage.sentinel"] = "kong/plugins/oidc/resty/session/storage/sentinel.lua"
   }
 }

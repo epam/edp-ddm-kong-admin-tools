@@ -44,7 +44,7 @@ spec:
         {{- end }}
         {{- if .Values.global.registry.kong.istio.sidecar.enabled }}
         sidecar.istio.io/inject: "true"
-        traffic.sidecar.istio.io/excludeOutboundPorts: '5432'
+        traffic.sidecar.istio.io/excludeOutboundPorts: '5432,6379'
         {{- include "kong.istioResources" . | nindent 8 }}
         {{- end }}
         {{- end }}

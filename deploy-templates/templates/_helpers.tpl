@@ -458,6 +458,11 @@ Use the Pod security context defined in Values or set the UID by default
 {{- template "kong.env" . }}
 - name: KONG_NGINX_DAEMON
   value: "off"
+- name: REDIS_AUTH_SECRET
+  valueFrom:
+    secretKeyRef:
+      name: redis-auth
+      key: password
 {{- end -}}
 
 {{/*

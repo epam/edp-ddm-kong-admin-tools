@@ -68,10 +68,11 @@ env:
   nginx_proxy_proxy_buffers: 8 512k
   nginx_http_large_client_header_buffers: 16 512k
   nginx_http_client_header_buffer_size: 256k
-  # Level of logging for the controller. Allowed values are 
+  nginx_main_env: "REDIS_AUTH_SECRET"
+  # Level of logging for the controller. Allowed values are
   # trace, debug, info, warn, error, fatal and panic. (default "info")
   log_level: info
-  
+
 # Specify Kong's Docker image and repository details here
 image:
   repository: kong
@@ -342,7 +343,7 @@ ingressController:
     # generates self-signed certificates by default. Set this to false once you
     # have installed CA-signed certificates.
     kong_admin_tls_skip_verify: true
-    # Level of logging for the controller. Allowed values are 
+    # Level of logging for the controller. Allowed values are
     # trace, debug, info, warn, error, fatal and panic. (default "info")
     log_level: info
     watch_namespace:
