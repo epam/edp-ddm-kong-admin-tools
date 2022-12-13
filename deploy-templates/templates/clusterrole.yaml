@@ -23,5 +23,13 @@ rules:
       - get
       - watch
       - list
+  - apiGroups:
+      - ''
+    resources:
+      - endpoints
+      - pods
+      - services
+    verbs:
+      - list
 {{- end -}}
 {{- end }}

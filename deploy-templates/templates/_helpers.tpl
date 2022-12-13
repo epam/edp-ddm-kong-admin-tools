@@ -463,6 +463,11 @@ Use the Pod security context defined in Values or set the UID by default
     secretKeyRef:
       name: redis-auth
       key: password
+- name: OIDC_SESSION_SECRET
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.plugins.oidc.secretName }}
+      key: secret
 {{- end -}}
 
 {{/*
@@ -702,3 +707,12 @@ sidecar.istio.io/proxyCPU: {{ .Values.global.registry.kong.istio.sidecar.resourc
 sidecar.istio.io/proxyMemory: {{ .Values.global.registry.kong.istio.sidecar.resources.requests.memory | quote }}
 {{- end }}
 {{- end -}}
+
+{{- define "sentinel.oidcSessionSecret"}}
+{{- $secret := (lookup "v1" "Secret" .Release.Namespace .Values.plugins.oidc.secretName) -}}
+{{- if $secret }}
+{{- $secret.data.secret }}
+{{- else }}
+{{- uuidv4 | b64enc }}
+{{- end }}
+{{- end }}
