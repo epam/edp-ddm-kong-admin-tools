@@ -36,7 +36,7 @@ function CassandraConnector.new(kong_config)
 
     package.loaded["socket"] = nil
     package.loaded["kong.tools.dns"] = nil
-    package.loaded["resty.dns.client"] = nil
+    package.loaded["kong.resty.dns.client"] = nil
     package.loaded["resty.dns.resolver"] = nil
 
     ngx.socket.tcp = function(...) -- luacheck: ignore
@@ -120,7 +120,7 @@ function CassandraConnector.new(kong_config)
     kong_config.dns_no_sync = dns_no_sync_old
 
     package.loaded["resty.dns.resolver"] = nil
-    package.loaded["resty.dns.client"] = nil
+    package.loaded["kong.resty.dns.client"] = nil
     package.loaded["kong.tools.dns"] = nil
     package.loaded["socket"] = nil
 
@@ -244,22 +244,23 @@ function CassandraConnector:init()
   for i = 1, #peers do
     local release_version = peers[i].release_version
     if not release_version then
-      return nil, "no release_version for peer " .. peers[i].host
-    end
+      log.warn("no release_version for peer ", peers[i].host)
 
-    local major_minor, major = extract_major_minor(release_version)
-    major = tonumber(major)
-    if not major_minor or not major then
-      return nil, "failed to extract major version for peer " .. peers[i].host
-                  .. " with version: " .. tostring(peers[i].release_version)
-    end
+    else
+      local major_minor, major = extract_major_minor(release_version)
+      major = tonumber(major)
+      if not (major_minor and major) then
+        return nil, "failed to extract major version for peer " .. peers[i].host
+                    .. " with version: " .. tostring(peers[i].release_version)
+      end
 
-    if i == 1 then
-      major_version = major
-      major_minor_version = major_minor
+      if not major_version then
+        major_version = major
+        major_minor_version = major_minor
 
-    elseif major ~= major_version then
-      return nil, "different major versions detected"
+      elseif major ~= major_version then
+        return nil, "different major versions detected"
+      end
     end
   end
 
@@ -1021,6 +1022,7 @@ do
           or string.find(err, "[Uu]ndefined column name")
           or string.find(err, "No column definition found for column")
           or string.find(err, "Undefined name .- in selection clause")
+          or string.find(err, "Column with name .- already exists")
           then
             log.warn("ignored error while running '%s' migration: %s (%s)",
                      name, err, cql:gsub("\n", " "):gsub("%s%s+", " "))
@@ -1051,6 +1053,7 @@ do
 
     local cql
     local args
+    local opts = { consistency = self.opts.write_consistency }
 
     if state == "executed" then
       cql = [[UPDATE schema_meta
@@ -1087,7 +1090,7 @@ do
     table.insert(args, SCHEMA_META_KEY)
     table.insert(args, subsystem)
 
-    local res, err = conn:execute(cql, args)
+    local res, err = conn:execute(cql, args, opts)
     if not res then
       return nil, err
     end

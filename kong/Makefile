@@ -1,7 +1,9 @@
+$(info starting make in kong)
+
 OS := $(shell uname | awk '{print tolower($$0)}')
 MACHINE := $(shell uname -m)
 
-DEV_ROCKS = "busted 2.0.0" "busted-htest 1.0.0" "luacheck 0.24.0" "lua-llthreads2 0.1.5" "http 0.3" "ldoc 1.4.6"
+DEV_ROCKS = "busted 2.0.0" "busted-htest 1.0.0" "luacheck 0.26.1" "lua-llthreads2 0.1.6" "http 0.4" "ldoc 1.4.6"
 WIN_SCRIPTS = "bin/busted" "bin/kong"
 BUSTED_ARGS ?= -v
 TEST_CMD ?= bin/busted $(BUSTED_ARGS)
@@ -14,12 +16,17 @@ OPENSSL_DIR ?= /usr
 GRPCURL_OS ?= $(OS)
 endif
 
+ifeq ($(MACHINE), aarch64)
+GRPCURL_MACHINE ?= arm64
+else
+GRPCURL_MACHINE ?= $(MACHINE)
+endif
+
 .PHONY: install dependencies dev remove grpcurl \
 	setup-ci setup-kong-build-tools \
 	lint test test-integration test-plugins test-all \
 	pdk-phase-check functional-tests \
-	fix-windows \
-	nightly-release release
+	fix-windows release
 
 ROOT_DIR:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 KONG_SOURCE_LOCATION ?= $(ROOT_DIR)
@@ -29,44 +36,37 @@ RESTY_LUAROCKS_VERSION ?= `grep RESTY_LUAROCKS_VERSION $(KONG_SOURCE_LOCATION)/.
 RESTY_OPENSSL_VERSION ?= `grep RESTY_OPENSSL_VERSION $(KONG_SOURCE_LOCATION)/.requirements | awk -F"=" '{print $$2}'`
 RESTY_PCRE_VERSION ?= `grep RESTY_PCRE_VERSION $(KONG_SOURCE_LOCATION)/.requirements | awk -F"=" '{print $$2}'`
 KONG_BUILD_TOOLS ?= `grep KONG_BUILD_TOOLS_VERSION $(KONG_SOURCE_LOCATION)/.requirements | awk -F"=" '{print $$2}'`
-GRPCURL_VERSION ?= '9846afccbc2f34255dfb459dc6f0196a2b6dbe05'
+GRPCURL_VERSION ?= 1.8.5
 OPENRESTY_PATCHES_BRANCH ?= master
 KONG_NGINX_MODULE_BRANCH ?= master
 
 PACKAGE_TYPE ?= deb
-REPOSITORY_NAME ?= kong-${PACKAGE_TYPE}
-REPOSITORY_OS_NAME ?= ${RESTY_IMAGE_BASE}
-KONG_PACKAGE_NAME ?= kong
 # This logic should mirror the kong-build-tools equivalent
-KONG_VERSION ?= `echo $(KONG_SOURCE_LOCATION)/kong-*.rockspec | sed 's,.*/,,' | cut -d- -f2`
+KONG_VERSION ?= `$(KONG_SOURCE_LOCATION)/distribution/grep-kong-version.sh`
 
-TAG := $(shell git describe --exact-match HEAD || true)
+TAG := $(shell git describe --exact-match --tags HEAD || true)
+
 
 ifneq ($(TAG),)
-	# We're building a tag
+	# if we're building a tag the tag name is the KONG_VERSION (allows for environment var to override)
 	ISTAG = true
-	POSSIBLE_PRERELEASE_NAME = $(shell git describe --tags --abbrev=0 | awk -F"-" '{print $$2}')
-	ifneq ($(POSSIBLE_PRERELEASE_NAME),)
-		# We're building a pre-release tag
-		OFFICIAL_RELEASE = false
-		REPOSITORY_NAME = kong-prerelease
-	else
-		# We're building a semver release tag
-		OFFICIAL_RELEASE = true
-		KONG_VERSION ?= `cat $(KONG_SOURCE_LOCATION)/kong-*.rockspec | grep -m1 tag | awk '{print $$3}' | sed 's/"//g'`
-		ifeq ($(PACKAGE_TYPE),apk)
-		    REPOSITORY_NAME = kong-alpine-tar
-		endif
-	endif
+	KONG_TAG = $(TAG)
+	OFFICIAL_RELEASE = true
 else
+	# we're not building a tag so this is a nightly build
+	RELEASE_DOCKER_ONLY = true
 	OFFICIAL_RELEASE = false
 	ISTAG = false
-	BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
-	REPOSITORY_NAME = kong-${BRANCH}
-	REPOSITORY_OS_NAME = ${BRANCH}
-	KONG_PACKAGE_NAME ?= kong-${BRANCH}
-	KONG_VERSION ?= `date +%Y-%m-%d`
 endif
+
+release-docker-images:
+	cd $(KONG_BUILD_TOOLS_LOCATION); \
+	$(MAKE) \
+	KONG_SOURCE_LOCATION=${KONG_SOURCE_LOCATION} \
+	package-kong && \
+	$(MAKE) \
+	KONG_SOURCE_LOCATION=${KONG_SOURCE_LOCATION} \
+	release-kong-docker-images
 
 release:
 ifeq ($(ISTAG),false)
@@ -74,17 +74,16 @@ ifeq ($(ISTAG),false)
 endif
 	cd $(KONG_BUILD_TOOLS_LOCATION); \
 	$(MAKE) \
+	KONG_SOURCE_LOCATION=${KONG_SOURCE_LOCATION} \
 	KONG_VERSION=${KONG_VERSION} \
-	KONG_PACKAGE_NAME=${KONG_PACKAGE_NAME} \
+	KONG_TAG=${KONG_TAG} \
 	package-kong && \
 	$(MAKE) \
+	KONG_SOURCE_LOCATION=${KONG_SOURCE_LOCATION} \
 	KONG_VERSION=${KONG_VERSION} \
-	KONG_PACKAGE_NAME=${KONG_PACKAGE_NAME} \
-	REPOSITORY_NAME=${REPOSITORY_NAME} \
-	REPOSITORY_OS_NAME=${REPOSITORY_OS_NAME} \
-	KONG_PACKAGE_NAME=${KONG_PACKAGE_NAME} \
-	KONG_VERSION=${KONG_VERSION} \
+	RELEASE_DOCKER_ONLY=${RELEASE_DOCKER_ONLY} \
 	OFFICIAL_RELEASE=$(OFFICIAL_RELEASE) \
+	KONG_TAG=${KONG_TAG} \
 	release-kong
 
 setup-ci:
@@ -96,10 +95,12 @@ setup-ci:
 	.ci/setup_env.sh
 
 setup-kong-build-tools:
+	-git submodule update --init --recursive
+	-git submodule status
 	-rm -rf $(KONG_BUILD_TOOLS_LOCATION)
 	-git clone https://github.com/Kong/kong-build-tools.git $(KONG_BUILD_TOOLS_LOCATION)
 	cd $(KONG_BUILD_TOOLS_LOCATION); \
-	git reset --hard $(KONG_BUILD_TOOLS); \
+	git reset --hard && git checkout $(KONG_BUILD_TOOLS); \
 
 functional-tests: setup-kong-build-tools
 	cd $(KONG_BUILD_TOOLS_LOCATION); \
@@ -119,19 +120,14 @@ dependencies: bin/grpcurl
 	    echo $$rock already installed, skipping ; \
 	  else \
 	    echo $$rock not found, installing via luarocks... ; \
-	    luarocks install $$rock OPENSSL_DIR=$(OPENSSL_DIR) CRYPTO_DIR=$(OPENSSL_DIR); \
+	    luarocks install $$rock OPENSSL_DIR=$(OPENSSL_DIR) CRYPTO_DIR=$(OPENSSL_DIR) || exit 1; \
 	  fi \
 	done;
 
 bin/grpcurl:
-ifeq (, $(shell which go))
-	$(error "error building grpcurl: no go compiler found in PATH")
-endif
-	@cd bin && \
-	go mod init grpcurl && \
-	go get -v -d github.com/fullstorydev/grpcurl@$(GRPCURL_VERSION) && \
-	go build -ldflags '-X "main.version=kong dev build $(GRPCURL_VERSION)"' github.com/fullstorydev/grpcurl/cmd/grpcurl && \
-	rm -f go.mod go.sum
+	@curl -s -S -L \
+		https://github.com/fullstorydev/grpcurl/releases/download/v$(GRPCURL_VERSION)/grpcurl_$(GRPCURL_VERSION)_$(GRPCURL_OS)_$(GRPCURL_MACHINE).tar.gz | tar xz -C bin;
+	@rm bin/LICENSE
 
 dev: remove install dependencies
 

@@ -1,7 +1,6 @@
 local cjson = require "cjson.safe"
 local pl_path = require "pl.path"
 local raw_log = require "ngx.errlog".raw_log
-local msgpack = require "MessagePack"
 
 local _, ngx_pipe = pcall(require, "ngx.pipe")
 
@@ -56,27 +55,15 @@ local function get_server_defs()
   if not _servers then
     _servers = {}
 
-    if config.pluginserver_names then
-      for i, name in ipairs(config.pluginserver_names) do
-        kong.log.debug("search config for pluginserver named: ", name)
-        local env_prefix = "pluginserver_" .. name:gsub("-", "_")
-        _servers[i] = {
-          name = name,
-          socket = config[env_prefix .. "_socket"] or "/usr/local/kong/" .. name .. ".socket",
-          start_command = config[env_prefix .. "_start_cmd"] or ifexists("/usr/local/bin/"..name),
-          query_command = config[env_prefix .. "_query_cmd"] or ifexists("/usr/local/bin/query_"..name),
-        }
-      end
-
-    elseif config.go_plugins_dir ~= "off" then
-      kong.log.info("old go_pluginserver style")
-      _servers[1] = {
-        name = "go-pluginserver",
-        socket = config.prefix .. "/go_pluginserver.sock",
-        start_command = ("%s -kong-prefix %q -plugins-directory %q"):format(
-            config.go_pluginserver_exe, config.prefix, config.go_plugins_dir),
-        info_command = ("%s -plugins-directory %q -dump-plugin-info %%q"):format(
-            config.go_pluginserver_exe, config.go_plugins_dir),
+    for i, name in ipairs(config.pluginserver_names) do
+      name = name:lower()
+      kong.log.debug("search config for pluginserver named: ", name)
+      local env_prefix = "pluginserver_" .. name:gsub("-", "_")
+      _servers[i] = {
+        name = name,
+        socket = config[env_prefix .. "_socket"] or "/usr/local/kong/" .. name .. ".socket",
+        start_command = config[env_prefix .. "_start_cmd"] or ifexists("/usr/local/bin/"..name),
+        query_command = config[env_prefix .. "_query_cmd"] or ifexists("/usr/local/bin/query_"..name),
       }
     end
   end
@@ -152,48 +139,28 @@ local function ask_info(server_def)
 
   local infos_dump = fd:read("*a")
   fd:close()
-  local infos = cjson_decode(infos_dump)
-  if type(infos) ~= "table" then
+  local dump = cjson_decode(infos_dump)
+  if type(dump) ~= "table" then
     error(string.format("Not a plugin info table: \n%s\n%s",
       server_def.query_command, infos_dump))
     return
   end
+
+  server_def.protocol = dump.Protocol or "MsgPack:1"
+  local infos = dump.Plugins or dump
 
   for _, plugin_info in ipairs(infos) do
     register_plugin_info(server_def, plugin_info)
   end
 end
 
-local function ask_info_plugin(server_def, plugin_name)
-  if not server_def.info_command then
-    return
-  end
-
-  local fd, err = io.popen(server_def.info_command:format(plugin_name))
-  if not fd then
-    local msg = string.format("asking [%s] info of [%s", server_def.name, plugin_name)
-    kong.log.err(msg, err)
-    return
-  end
-
-  local info_dump = fd:read("*a")
-  fd:close()
-  local info = assert(msgpack.unpack(info_dump))
-  register_plugin_info(server_def, info)
-end
-
 function proc_mgmt.get_plugin_info(plugin_name)
   if not _plugin_infos then
+    kong = kong or _G.kong    -- some CLI cmds set the global after loading the module.
     _plugin_infos = {}
 
     for _, server_def in ipairs(get_server_defs()) do
       ask_info(server_def)
-    end
-  end
-
-  if not _plugin_infos[plugin_name] then
-    for _, server_def in ipairs(get_server_defs()) do
-      ask_info_plugin(server_def, plugin_name)
     end
   end
 
@@ -224,7 +191,7 @@ local function grab_logs(proc, name)
       raw_log(ngx_INFO, prefix .. line)
     end
 
-    if not data and err == "closed" then
+    if not data and (err == "closed" or ngx.worker.exiting()) then
       return
     end
   end
@@ -235,17 +202,33 @@ function proc_mgmt.pluginserver_timer(premature, server_def)
     return
   end
 
+  if ngx.config.subsystem ~= "http" then
+    return
+  end
+
+  local next_spawn = 0
+
   while not ngx.worker.exiting() do
+    if ngx.now() < next_spawn then
+      ngx.sleep(next_spawn - ngx.now())
+    end
+
     kong.log.notice("Starting " .. server_def.name or "")
-    server_def.proc = assert(ngx_pipe.spawn(server_def.start_command, {
+    server_def.proc = assert(ngx_pipe.spawn("exec " .. server_def.start_command, {
       merge_stderr = true,
     }))
+    next_spawn = ngx.now() + 1
     server_def.proc:set_timeouts(nil, nil, nil, 0)     -- block until something actually happens
 
     while true do
       grab_logs(server_def.proc, server_def.name)
       local ok, reason, status = server_def.proc:wait()
-      if ok ~= nil or reason == "exited" then
+      if ok == false and reason == "exit" and status == 127 then
+        kong.log.err(string.format(
+                "external pluginserver %q start command %q exited with \"command not found\"",
+                server_def.name, server_def.start_command))
+        break
+      elseif ok ~= nil or reason == "exited" or ngx.worker.exiting() then
         kong.log.notice("external pluginserver '", server_def.name, "' terminated: ", tostring(reason), " ", tostring(status))
         break
       end

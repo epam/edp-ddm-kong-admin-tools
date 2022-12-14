@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 DOCS_REPO=$1
 DOCS_VERSION=$2
 
@@ -31,14 +33,18 @@ function count_indents_on_line() {
     fi
 }
 
-function insert_pdk_nav_file_into_docs_nav_file() {
-    local pdk_nav_file=$1
+function insert_yaml_file_into_nav_file() {
+    local new_nav_partial_file=$1
     local docs_nav_file=$2
+    local first_line_text=$3
+
+    echo "Patching $docs_nav_file with $new_nav_partial_file ..."
 
     # find first_line and last line of the current pdk index in docs_nav_file
-    # first line contains "Plugin Development Kit"
+
+    # first line contains the content of first_line_text
     local first_line
-    first_line=$(sed -n "/text: Plugin Development Kit/=" "$docs_nav_file")
+    first_line=$(sed -n "$first_line_text" "$docs_nav_file")
 
     # find last_line by looking at the indentation of all subsequent lines, looking at the indentation
     # last line is the last one with more indentation that first_line
@@ -60,17 +66,28 @@ function insert_pdk_nav_file_into_docs_nav_file() {
     local insert_line="$(( first_line - 1 ))"
 
     # delete existing pdk index, insert new pdk nav file instead
-    sed -i '' -e "${first_line},${last_line}d" -e "${insert_line}r${pdk_nav_file}" "$docs_nav_file"
+    # Passing an option to -i is required on macOS, but not required on Linux
+    # Commenting out to make the GitHub Actions build work
+    #sed -i '' -e "${first_line},${last_line}d" -e "${insert_line}r${new_nav_partial_file}" "$docs_nav_file"
+    # Recommended to `brew install gnu-sed && brew info gnu-sed` to override default sed on Mac
+    sed -i -e "${first_line},${last_line}d" -e "${insert_line}r${new_nav_partial_file}" "$docs_nav_file"
 }
 
 
 echo "Generating docs ..."
 
 rm -rf ./autodoc/output
-./autodoc/admin-api/generate.lua && \
-./autodoc/cli/generate.lua && \
-./autodoc/conf/generate.lua && \
+./autodoc/admin-api/generate.lua
+./autodoc/cli/generate.lua
+./autodoc/upgrading/generate.lua
 ./autodoc/pdk/generate.lua
+
+exit_code=$?
+
+if [[ $exit_code -ne 0 ]]
+then
+    exit $exit_code
+fi
 
 if [ -z "$DOCS_REPO" ] || [ -z "$DOCS_VERSION" ]
 then
@@ -93,7 +110,7 @@ then
     echo
     echo "docs repo: $DOCS_REPO"
     echo "docs version: $DOCS_VERSION"
-
+    echo
 else
     echoerr
     echoerr "Could not find the docs repo in $DOCS_REPO . Please clone it there so I can copy the autodocs files there"
@@ -117,7 +134,7 @@ then
     exit 2
 fi
 
-DOCS_APP="$DOCS_REPO/app/gateway-oss/$DOCS_VERSION"
+DOCS_APP="$DOCS_REPO/app/gateway/$DOCS_VERSION"
 
 if [ ! -d "$DOCS_APP" ]
 then
@@ -130,7 +147,7 @@ then
     exit 3
 fi
 
-DOCS_NAV="$DOCS_REPO/app/_data/docs_nav_ce_$DOCS_VERSION.yml"
+DOCS_NAV="$DOCS_REPO/app/_data/docs_nav_gateway_$DOCS_VERSION.yml"
 
 if [ ! -f "$DOCS_NAV" ]
 then
@@ -144,16 +161,23 @@ then
     exit 4
 fi
 
-copy autodoc/output/admin-api/admin-api.md "$DOCS_APP/admin-api.md"
-copy autodoc/output/admin-api/db-less-admin-api.md "$DOCS_APP/db-less-admin-api.md"
-copy autodoc/output/nav/docs_nav.yml.admin-api.in "$DOCS_REPO/autodoc-nav/docs_nav_$DOCS_VERSION.yml.head.in"
+copy autodoc/output/admin-api/admin-api.md "$DOCS_APP/admin-api/index.md"
+copy autodoc/output/cli.md "$DOCS_APP/reference/cli.md"
 
-copy autodoc/output/configuration.md "$DOCS_APP/configuration.md"
-copy autodoc/output/cli.md "$DOCS_APP/cli.md"
+rm -rf "$DOCS_APP/install-and-run/upgrade-oss.md"
+copy autodoc/output/upgrading.md "$DOCS_APP/install-and-run/upgrade-oss.md"
 
-rm -rf "$DOCS_APP/pdk/*"
+rm -rf "$DOCS_APP/pdk/"
 mkdir -p "$DOCS_APP/pdk"
-copy autodoc/output/pdk/* "$DOCS_APP/pdk/"
 
-echo "Patching $DOCS_NAV with autodoc/output/pdk_nav.yml ..."
-insert_pdk_nav_file_into_docs_nav_file ./autodoc/output/_pdk_nav.yml "$DOCS_NAV"
+for module in autodoc/output/pdk/*; do
+  copy "$module" "$DOCS_APP/pdk/"
+done
+
+insert_yaml_file_into_nav_file ./autodoc/output/nav/docs_nav.yml.admin-api.in \
+                               "$DOCS_NAV" \
+                               "/title: Admin API/="
+
+insert_yaml_file_into_nav_file ./autodoc/output/_pdk_nav.yml \
+                               "$DOCS_NAV" \
+                               "/text: Plugin Development Kit/="

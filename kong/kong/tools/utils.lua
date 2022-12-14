@@ -4,7 +4,7 @@
 -- NOTE: Before implementing a function here, consider if it will be used in many places
 -- across Kong. If not, a local function in the appropriate module is preferred.
 --
--- @copyright Copyright 2016-2020 Kong Inc. All rights reserved.
+-- @copyright Copyright 2016-2022 Kong Inc. All rights reserved.
 -- @license [Apache 2.0](https://opensource.org/licenses/Apache-2.0)
 -- @module kong.tools.utils
 
@@ -25,6 +25,7 @@ local pairs         = pairs
 local ipairs        = ipairs
 local select        = select
 local tostring      = tostring
+local tonumber      = tonumber
 local sort          = table.sort
 local concat        = table.concat
 local insert        = table.insert
@@ -35,12 +36,23 @@ local gsub          = string.gsub
 local split         = pl_stringx.split
 local re_find       = ngx.re.find
 local re_match      = ngx.re.match
+local get_phase     = ngx.get_phase
+local ngx_sleep     = ngx.sleep
 local inflate_gzip  = zlib.inflateGzip
 local deflate_gzip  = zlib.deflateGzip
 local stringio_open = pl_stringio.open
 
 ffi.cdef[[
 typedef unsigned char u_char;
+
+typedef long time_t;
+typedef int clockid_t;
+typedef struct timespec {
+        time_t   tv_sec;        /* seconds */
+        long     tv_nsec;       /* nanoseconds */
+} nanotime;
+
+int clock_gettime(clockid_t clk_id, struct timespec *tp);
 
 int gethostname(char *name, size_t len);
 
@@ -52,7 +64,7 @@ void ERR_free_strings(void);
 
 const char *ERR_reason_error_string(unsigned long e);
 
-int open(const char * filename, int flags, int mode);
+int open(const char * filename, int flags, ...);
 size_t read(int fd, void *buf, size_t count);
 int write(int fd, const void *ptr, int numbytes);
 int close(int fd);
@@ -60,6 +72,7 @@ char *strerror(int errnum);
 ]]
 
 local _M = {}
+local YIELD_ITERATIONS = 1000
 
 --- splits a string.
 -- just a placeholder to the penlight `pl.stringx.split` function
@@ -150,25 +163,25 @@ do
   local bytes_buf_t = ffi.typeof "char[?]"
 
   local function urandom_bytes(buf, size)
-    local fd = ffi.C.open("/dev/urandom", O_RDONLY, 0) -- mode is ignored
+    local fd = C.open("/dev/urandom", O_RDONLY, 0) -- mode is ignored
     if fd < 0 then
       ngx_log(WARN, "Error opening random fd: ",
-                    ffi_str(ffi.C.strerror(ffi.errno())))
+                    ffi_str(C.strerror(ffi.errno())))
 
       return false
     end
 
-    local res = ffi.C.read(fd, buf, size)
+    local res = C.read(fd, buf, size)
     if res <= 0 then
       ngx_log(WARN, "Error reading from urandom: ",
-                    ffi_str(ffi.C.strerror(ffi.errno())))
+                    ffi_str(C.strerror(ffi.errno())))
 
       return false
     end
 
-    if ffi.C.close(fd) ~= 0 then
+    if C.close(fd) ~= 0 then
       ngx_log(WARN, "Error closing urandom: ",
-                    ffi_str(ffi.C.strerror(ffi.errno())))
+                    ffi_str(C.strerror(ffi.errno())))
     end
 
     return true
@@ -378,7 +391,7 @@ do
       keys[len] = number
     end
 
-    table.sort(keys)
+    sort(keys)
     local new_t = {}
 
     for i=1,len do
@@ -495,17 +508,7 @@ do
   local floor = math.floor
   local max = math.max
 
-  local ok, is_array_fast = pcall(require, "table.isarray")
-  if not ok then
-    is_array_fast = function(t)
-      for k in pairs(t) do
-          if type(k) ~= "number" or floor(k) ~= k then
-            return false
-          end
-      end
-      return true
-    end
-  end
+  local is_array_fast = require "table.isarray"
 
   local is_array_strict = function(t)
     local m, c = 0, 0
@@ -602,16 +605,7 @@ end
 
 
 do
-  local ok, clone = pcall(require, "table.clone")
-  if not ok then
-    clone = function(t)
-      local copy = {}
-      for key, value in pairs(t) do
-        copy[key] = value
-      end
-      return copy
-    end
-  end
+  local clone = require "table.clone"
 
   --- Copies a table into a new table.
   -- neither sub tables nor metatables will be copied.
@@ -695,9 +689,9 @@ end
 -- @return success A boolean indicating wether the module was found.
 -- @return module The retrieved module, or the error in case of a failure
 function _M.load_module_if_exists(module_name)
-  local status, res = xpcall(require, function(err)
-                                        return debug.traceback(err)
-                                      end, module_name)
+  local status, res = xpcall(function()
+    return require(module_name)
+  end, debug.traceback)
   if status then
     return true, res
   -- Here we match any character because if a module has a dash '-' in its name, we would need to escape it.
@@ -942,9 +936,12 @@ _M.check_hostname = function(address)
   end
 
   -- Reject prefix/trailing dashes and dots in each segment
-  -- note: punycode allowes prefixed dash, if the characters before the dash are escaped
-  for _, segment in ipairs(split(name, ".")) do
-    if segment == "" or segment:match("-$") or segment:match("^%.") or segment:match("%.$") then
+  -- notes:
+  --   - punycode allows prefixed dash, if the characters before the dash are escaped
+  --   - FQDN can end in dots
+  for index, segment in ipairs(split(name, ".")) do
+    if segment:match("-$") or segment:match("^%.") or segment:match("%.$") or
+       (segment == "" and index ~= #split(name, ".")) then
       return nil, "invalid hostname: " .. address
     end
   end
@@ -977,7 +974,7 @@ end
 --- Formats an ip address or hostname with an (optional) port for use in urls.
 -- Supports ipv4, ipv6 and names.
 --
--- Explictly accepts 'nil+error' as input, to pass through any errors from the normalizing and name checking functions.
+-- Explicitly accepts 'nil+error' as input, to pass through any errors from the normalizing and name checking functions.
 -- @param p1 address to format, either string with name/ip, table returned from `normalize_ip`, or from the `socket.url` library.
 -- @param p2 port (optional) if p1 is a table, then this port will be inserted if no port-field is in the table
 -- @return formatted address or nil+error
@@ -1181,7 +1178,7 @@ do
   end
 
   -- ngx_str_t defined by lua-resty-core
-  local s = ffi.new("ngx_str_t[1]")
+  local s = ffi_new("ngx_str_t[1]")
   s[0].data = "10"
   s[0].len = 2
 
@@ -1350,5 +1347,124 @@ do
 end
 _M.get_mime_type = get_mime_type
 _M.get_error_template = get_error_template
+
+
+local topological_sort do
+
+  local function visit(current, neighbors_map, visited, marked, sorted)
+    if visited[current] then
+      return true
+    end
+
+    if marked[current] then
+      return nil, "Cycle detected, cannot sort topologically"
+    end
+
+    marked[current] = true
+
+    local schemas_pointing_to_current = neighbors_map[current]
+    if schemas_pointing_to_current then
+      local neighbor, ok, err
+      for i = 1, #schemas_pointing_to_current do
+        neighbor = schemas_pointing_to_current[i]
+        ok, err = visit(neighbor, neighbors_map, visited, marked, sorted)
+        if not ok then
+          return nil, err
+        end
+      end
+    end
+
+    marked[current] = false
+
+    visited[current] = true
+
+    insert(sorted, 1, current)
+
+    return true
+  end
+
+  topological_sort = function(items, get_neighbors)
+    local neighbors_map = {}
+    local source, destination
+    local neighbors
+    for i = 1, #items do
+      source = items[i] -- services
+      neighbors = get_neighbors(source)
+      for j = 1, #neighbors do
+        destination = neighbors[j] --routes
+        neighbors_map[destination] = neighbors_map[destination] or {}
+        insert(neighbors_map[destination], source)
+      end
+    end
+
+    local sorted = {}
+    local visited = {}
+    local marked = {}
+
+    local current, ok, err
+    for i = 1, #items do
+      current = items[i]
+      if not visited[current] and not marked[current] then
+        ok, err = visit(current, neighbors_map, visited, marked, sorted)
+        if not ok then
+          return nil, err
+        end
+      end
+    end
+
+    return sorted
+  end
+end
+_M.topological_sort = topological_sort
+
+---
+-- Sort by handler priority and check for collisions. In case of a collision
+-- sorting will be applied based on the plugin's name.
+-- @tparam table plugin table containing `handler` table and a `name` string
+-- @tparam table plugin table containing `handler` table and a `name` string
+-- @treturn boolean outcome of sorting
+function _M.sort_by_handler_priority(a, b)
+  local prio_a = a.handler.PRIORITY or 0
+  local prio_b = b.handler.PRIORITY or 0
+  if prio_a == prio_b and not
+      (prio_a == 0 or prio_b == 0) then
+    return a.name > b.name
+  end
+  return prio_a > prio_b
+end
+
+do
+  local counter = 0
+  function _M.yield(in_loop, phase)
+    if ngx.IS_CLI then
+      return
+    end
+    phase = phase or get_phase()
+    if phase == "init" or phase == "init_worker" then
+      return
+    end
+    if in_loop then
+      counter = counter + 1
+      if counter % YIELD_ITERATIONS ~= 0 then
+        return
+      end
+      counter = 0
+    end
+    ngx_sleep(0)
+  end
+end
+
+local time_ns
+do
+  local nanop = ffi_new("nanotime[1]")
+  function time_ns()
+    -- CLOCK_REALTIME -> 0
+    C.clock_gettime(0, nanop)
+    local t = nanop[0]
+
+    return tonumber(t.tv_sec) * 1e9 + tonumber(t.tv_nsec)
+  end
+end
+_M.time_ns = time_ns
 
 return _M

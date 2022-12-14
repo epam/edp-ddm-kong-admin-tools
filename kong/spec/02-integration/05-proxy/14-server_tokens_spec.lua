@@ -470,13 +470,19 @@ describe("headers [#" .. strategy .. "]", function()
           assert.res_status(200, res)
           admin_client:close()
 
-          local res = assert(proxy_client:send {
-            method  = "GET",
-            path    = "/get",
-            headers = {
-              host  = "error-rewrite.test",
-            }
-          })
+          helpers.wait_until(function()
+            res = assert(proxy_client:send {
+              method  = "GET",
+              path    = "/get",
+              headers = {
+                host  = "error-rewrite.test",
+              }
+            })
+
+            return pcall(function()
+              assert.res_status(500, res)
+            end)
+          end, 10)
 
           db.plugins:delete({ id = uuid })
 
@@ -766,7 +772,7 @@ describe("headers [#" .. strategy .. "]", function()
         -- to ensure that the `headers` configuration value can be specified
         -- via the configuration file (vs. environment variables as the rest
         -- of this test suite uses).
-        -- This regression occured because of the dumping of config values into
+        -- This regression occurred because of the dumping of config values into
         -- .kong_env (and the lack of serialization for the `headers` table).
         assert(helpers.kong_exec("restart -c spec/fixtures/headers.conf"))
 

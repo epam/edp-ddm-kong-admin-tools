@@ -7,7 +7,7 @@ services:
       - 15002:9000
       - 15003:9001
   redis:
-    image: redis:5.0.7-alpine
+    image: redis:5.0.9-alpine
     ports:
       - 6379:6379
     expose:
@@ -18,11 +18,22 @@ services:
       timeout: 10s
       retries: 10
   kong:
-    image: kong/kong-build-tools:test
+    image: mashape/kong-build-tools:test
     privileged: true
     network_mode: host
     container_name: kong
+    depends_on:
+      cassandra:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+#    volumes:
+#      - ./kong:/kong
     environment:
+      JOBS: 2
+      TEST_SPLIT: ${TEST_SPLIT:-all}
       TEST_SUITE: ${TEST_SUITE:-integration}
       KONG_DATABASE: ${TEST_DATABASE:-postgres}
       KONG_TEST_DATABASE: ${TEST_DATABASE:-postgres}
@@ -64,8 +75,9 @@ services:
       retries: 10
     restart: on-failure
   postgres:
-    image: postgres:${POSTGRES_VERSION:-9.5}
+    image: postgres:${POSTGRES_VERSION:-13}
     environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
       POSTGRES_DB: ${KONG_PG_DATABASE:-kong_tests}
       POSTGRES_USER: ${KONG_PG_USER:-kong}
       POSTGRES_PASSWORD: ${KONG_PG_PASSWORD:-kongpassword}

@@ -1,6 +1,8 @@
 require("spec.helpers")
-local basic = require("kong.plugins.log-serializers.basic")
+
+
 local LOG_PHASE = require("kong.pdk.private.phases").phases.log
+
 
 describe("kong.log.serialize", function()
   describe("#http", function()
@@ -47,7 +49,7 @@ describe("kong.log.serialize", function()
       package.loaded["kong.pdk.request"] = nil
       local pdk_request = require "kong.pdk.request"
       kong.request = pdk_request.new(kong)
-      kong.ctx.core.phase = LOG_PHASE
+      ngx.ctx.KONG_PHASE = LOG_PHASE
     end)
 
     describe("Basic", function()
@@ -169,28 +171,16 @@ describe("kong.log.serialize", function()
         assert.is_nil(res.tries)
       end)
 
-      it("basic serializer proxy works with a deprecation warning", function()
-        local warned = false
-        local orig_warn = kong.log.warn
+      it("includes query args in upstream_uri when they are not found in " ..
+         "var.upstream_uri and exist in var.args", function()
+        local args = "arg1=foo&arg2=bar"
+        ngx.var.is_args = "?"
+        ngx.var.args = args
 
-        kong.log.warn = function(msg)
-          assert.is_false(warned, "duplicate warning")
-
-          warned = true
-
-          return orig_warn(msg)
-        end
-
-        local res = basic.serialize(ngx, kong)
+        local res = kong.log.serialize({ngx = ngx, kong = kong, })
         assert.is_table(res)
 
-        assert.equals("1.1.1.1", res.client_ip)
-
-        -- 2nd time
-        res = basic.serialize(ngx, kong)
-        assert.is_table(res)
-
-        kong.log.warn = orig_warn
+        assert.equal("/upstream_uri" .. "?" .. args, res.upstream_uri)
       end)
     end)
   end)
@@ -232,7 +222,7 @@ describe("kong.log.serialize", function()
       package.loaded["kong.pdk.request"] = nil
       local pdk_request = require "kong.pdk.request"
       kong.request = pdk_request.new(kong)
-      kong.ctx.core.phase = LOG_PHASE
+      ngx.ctx.KONG_PHASE = LOG_PHASE
 
       -- reload log module, after ngx.config.subsystem has been patched
       -- to make sure the correct variant is used

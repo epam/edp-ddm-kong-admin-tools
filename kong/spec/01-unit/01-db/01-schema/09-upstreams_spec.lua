@@ -67,6 +67,12 @@ describe("load upstreams", function()
     assert.truthy(errs.healthchecks.active.concurrency)
   end)
 
+  it("invalid healthckecks.active.headers produces error", function()
+    local ok, errs = validate({ healthchecks = { active = { headers = { 114514 } } } } )
+    assert.falsy(ok)
+    assert.truthy(errs.healthchecks.active.headers)
+  end)
+
   it("invalid healthckecks.active.http_path produces error", function()
     local ok, errs = validate({ healthchecks = { active = { http_path = "potato" } } } )
     assert.falsy(ok)
@@ -136,7 +142,89 @@ describe("load upstreams", function()
     ok, errs = validate({ hash_on = "ip", hash_fallback = "ip" })
     assert.falsy(ok)
     assert.truthy(errs.hash_fallback)
+    ok, errs = validate({ hash_on = "path", hash_fallback = "path" })
+    assert.falsy(ok)
+    assert.truthy(errs.hash_fallback)
   end)
+
+  it("hash_on = 'query_arg' makes hash_on_query_arg required", function()
+    local ok, errs = validate({ hash_on = "query_arg" })
+    assert.falsy(ok)
+    assert.truthy(errs.hash_on_query_arg)
+  end)
+
+  it("hash_fallback = 'query_arg' makes hash_fallback_query_arg required", function()
+    local ok, errs = validate({ hash_on = "ip", hash_fallback = "query_arg" })
+    assert.falsy(ok)
+    assert.truthy(errs.hash_fallback_query_arg)
+  end)
+
+  it("hash_on and hash_fallback must be different query args", function()
+    local ok, errs = validate({ hash_on = "query_arg", hash_on_query_arg = "same",
+                                hash_fallback = "query_arg", hash_fallback_query_arg = "same" })
+    assert.falsy(ok)
+    assert.not_nil(errs["@entity"])
+    assert.same(
+      {
+        "values of these fields must be distinct: 'hash_on_query_arg', 'hash_fallback_query_arg'"
+      },
+      errs["@entity"]
+    )
+  end)
+
+  it("hash_on_query_arg and hash_fallback_query_arg must not be empty strings", function()
+    local ok, errs = validate({
+      name = "test",
+      hash_on = "query_arg",
+      hash_on_query_arg = "",
+    })
+    assert.is_nil(ok)
+    assert.not_nil(errs.hash_on_query_arg)
+
+    ok, errs = validate({
+      name = "test",
+      hash_on = "query_arg",
+      hash_on_query_arg = "ok",
+      hash_fallback = "query_arg",
+      hash_fallback_query_arg = "",
+    })
+    assert.is_nil(ok)
+    assert.not_nil(errs.hash_fallback_query_arg)
+  end)
+
+  it("hash_on and hash_fallback must be different uri captures", function()
+    local ok, errs = validate({ hash_on = "uri_capture", hash_on_uri_capture = "same",
+                                hash_fallback = "uri_capture", hash_fallback_uri_capture = "same" })
+    assert.falsy(ok)
+    assert.not_nil(errs["@entity"])
+    assert.same(
+      {
+        "values of these fields must be distinct: 'hash_on_uri_capture', 'hash_fallback_uri_capture'"
+      },
+      errs["@entity"]
+    )
+  end)
+
+  it("hash_on_uri_capture and hash_fallback_uri_capture must not be empty strings", function()
+    local ok, errs = validate({
+      name = "test",
+      hash_on = "uri_capture",
+      hash_on_uri_capture = "",
+    })
+    assert.is_nil(ok)
+    assert.not_nil(errs.hash_on_uri_capture)
+
+    ok, errs = validate({
+      name = "test",
+      hash_on = "uri_capture",
+      hash_on_uri_capture = "ok",
+      hash_fallback = "uri_capture",
+      hash_fallback_uri_capture = "",
+    })
+    assert.is_nil(ok)
+    assert.not_nil(errs.hash_fallback_uri_capture)
+  end)
+
 
   it("produces defaults", function()
     local u = {
@@ -199,15 +287,15 @@ describe("load upstreams", function()
 
       ok, err = Upstreams:validate({ name = "123.123.123.123" })
       assert.falsy(ok)
-      assert.same({ name = "Invalid name; no ip addresses allowed" }, err)
+      assert.same({ name = "Invalid name ('123.123.123.123'); no ip addresses allowed" }, err)
 
       ok, err = Upstreams:validate({ name = "\\\\bad\\\\////name////" })
       assert.falsy(ok)
-      assert.same({ name = "Invalid name; must be a valid hostname" }, err)
+      assert.same({ name = "Invalid name ('\\\\bad\\\\////name////'); must be a valid hostname" }, err)
 
       ok, err = Upstreams:validate({ name = "name:80" })
       assert.falsy(ok)
-      assert.same({ name = "Invalid name; no port allowed" }, err)
+      assert.same({ name = "Invalid name ('name:80'); no port allowed" }, err)
     end)
 
     -- acceptance
@@ -273,6 +361,10 @@ describe("load upstreams", function()
       local integer = "expected an integer"
       local boolean = "expected a boolean"
       local number = "expected a number"
+      local array = "expected an array"
+      local string = "expected a string"
+      local map = "expected a map"
+      local len_min_default = "length must be at least 1"
       local invalid_host = "invalid value: "
       local invalid_host_port = "must not have a port"
       local invalid_ip = "must not be an IP"
@@ -283,13 +375,12 @@ describe("load upstreams", function()
         {{ active = { concurrency = 0.5 }}, integer },
         {{ active = { concurrency = 0 }}, pos_integer },
         {{ active = { concurrency = -10 }}, pos_integer },
-        {{ active = { http_path = "" }}, "length must be at least 1" },
+        {{ active = { http_path = "" }}, len_min_default },
         {{ active = { http_path = "ovo" }}, "should start with: /" },
         {{ active = { https_sni = "127.0.0.1", }}, invalid_ip },
         {{ active = { https_sni = "127.0.0.1:8080", }}, invalid_ip },
         {{ active = { https_sni = "/example", }}, invalid_host },
         {{ active = { https_sni = ".example", }}, invalid_host },
-        {{ active = { https_sni = "example.", }}, invalid_host },
         {{ active = { https_sni = "example:", }}, invalid_host },
         {{ active = { https_sni = "mock;bin", }}, invalid_host },
         {{ active = { https_sni = "example.com/org", }}, invalid_host },
@@ -299,9 +390,13 @@ describe("load upstreams", function()
         {{ active = { https_sni = "hello-.example.com", }}, invalid_host },
         {{ active = { https_sni = "example.com:1234", }}, invalid_host_port },
         {{ active = { https_verify_certificate = "ovo", }}, boolean },
+        {{ active = { headers = 0, }}, map },
+        {{ active = { headers = { 0 }, }}, string },
+        {{ active = { headers = { "" }, }}, string },
+        {{ active = { headers = { ["x-header"] = 123 }, }}, array },
         {{ active = { healthy = { interval = -1 }}}, seconds },
         {{ active = { healthy = { interval = 1e+42 }}}, seconds },
-        {{ active = { healthy = { http_statuses = 404 }}}, "expected an array" },
+        {{ active = { healthy = { http_statuses = 404 }}}, array },
         {{ active = { healthy = { http_statuses = { "ovo" }}}}, integer },
         {{ active = { healthy = { http_statuses = { -1 }}}}, status_code },
         {{ active = { healthy = { http_statuses = { 99 }}}}, status_code },
@@ -317,7 +412,7 @@ describe("load upstreams", function()
         {{ active = { healthy = { successes = 256 }}}, zero_integer },
         {{ active = { unhealthy = { interval = -1 }}}, seconds },
         {{ active = { unhealthy = { interval = 1e+42 }}}, seconds },
-        {{ active = { unhealthy = { http_statuses = 404 }}}, "expected an array" },
+        {{ active = { unhealthy = { http_statuses = 404 }}}, array },
         {{ active = { unhealthy = { http_statuses = { "ovo" }}}}, integer },
         {{ active = { unhealthy = { http_statuses = { -1 }}}}, status_code },
         {{ active = { unhealthy = { http_statuses = { 99 }}}}, status_code },
@@ -333,7 +428,7 @@ describe("load upstreams", function()
         {{ active = { unhealthy = { http_failures = 0.5 }}}, integer},
         {{ active = { unhealthy = { http_failures = -1 }}}, zero_integer },
         {{ active = { unhealthy = { http_failures = 256 }}}, zero_integer },
-        {{ passive = { healthy = { http_statuses = 404 }}}, "expected an array" },
+        {{ passive = { healthy = { http_statuses = 404 }}}, array },
         {{ passive = { healthy = { http_statuses = { "ovo" }}}}, integer },
         {{ passive = { healthy = { http_statuses = { -1 }}}}, status_code },
         {{ passive = { healthy = { http_statuses = { 99 }}}}, status_code },
@@ -341,7 +436,7 @@ describe("load upstreams", function()
         {{ passive = { healthy = { successes = 0.5 }}}, integer },
         --{{ passive = { healthy = { successes = 0 }}}, integer },
         {{ passive = { healthy = { successes = -1 }}}, zero_integer },
-        {{ passive = { unhealthy = { http_statuses = 404 }}}, "expected an array" },
+        {{ passive = { unhealthy = { http_statuses = 404 }}}, array },
         {{ passive = { unhealthy = { http_statuses = { "ovo" }}}}, integer },
         {{ passive = { unhealthy = { http_statuses = { -1 }}}}, status_code },
         {{ passive = { unhealthy = { http_statuses = { 99 }}}}, status_code },
@@ -392,6 +487,7 @@ describe("load upstreams", function()
         { active = { http_path = "/" }},
         { active = { http_path = "/test" }},
         { active = { https_sni = "example.com" }},
+        { active = { https_sni = "example.test.", }},
         { active = { https_verify_certificate = false }},
         { active = { healthy = { interval = 0 }}},
         { active = { healthy = { http_statuses = { 200, 300 } }}},

@@ -1,9 +1,9 @@
 ---
--- This namespace contains an instance of a "logging facility", which is a
+-- This namespace contains an instance of a logging facility, which is a
 -- table containing all of the methods described below.
 --
--- This instance is namespaced per plugin, and Kong will make sure that before
--- executing a plugin, it will swap this instance with a logging facility
+-- This instance is namespaced per plugin. Before
+-- executing a plugin, Kong swaps this instance with a logging facility
 -- dedicated to the plugin. This allows the logs to be prefixed with the
 -- plugin's name for debugging purposes.
 --
@@ -32,6 +32,7 @@ local ngx = ngx
 local kong = kong
 local check_phase = phase_checker.check
 local split = utils.split
+local byte = string.byte
 
 
 local _PREFIX = "[kong] "
@@ -39,11 +40,13 @@ local _DEFAULT_FORMAT = "%file_src:%line_src %message"
 local _DEFAULT_NAMESPACED_FORMAT = "%file_src:%line_src [%namespace] %message"
 local PHASES = phase_checker.phases
 local PHASES_LOG = PHASES.log
+local QUESTION_MARK = byte("?")
 
 local phases_with_ctx =
     phase_checker.new(PHASES.rewrite,
                       PHASES.access,
                       PHASES.header_filter,
+                      PHASES.response,
                       PHASES.body_filter,
                       PHASES_LOG)
 local _LEVELS = {
@@ -162,20 +165,20 @@ local serializers = {
 }
 
 
---- Write a log line to the location specified by the current Nginx
+--- Writes a log line to the location specified by the current Nginx
 -- configuration block's `error_log` directive, with the `notice` level (similar
 -- to `print()`).
 --
 -- The Nginx `error_log` directive is set via the `log_level`, `proxy_error_log`
 -- and `admin_error_log` Kong configuration properties.
 --
--- Arguments given to this function will be concatenated similarly to
--- `ngx.log()`, and the log line will report the Lua file and line number from
--- which it was invoked. Unlike `ngx.log()`, this function will prefix error
+-- Arguments given to this function are concatenated similarly to
+-- `ngx.log()`, and the log line reports the Lua file and line number from
+-- which it was invoked. Unlike `ngx.log()`, this function prefixes error
 -- messages with `[kong]` instead of `[lua]`.
 --
 -- Arguments given to this function can be of any type, but table arguments
--- will be converted to strings via `tostring` (thus potentially calling a
+-- are converted to strings via `tostring` (thus potentially calling a
 -- table's `__tostring` metamethod if set). This behavior differs from
 -- `ngx.log()` (which only accepts table arguments if they define the
 -- `__tostring` metamethod) with the intent to simplify its usage and be more
@@ -196,10 +199,10 @@ local serializers = {
 --
 -- Where:
 --
--- * `%namespace`: is the configured namespace (the plugin name in this case).
--- * `%file_src`: is the file name from where the log was called from.
--- * `%line_src`: is the line number from where the log was called from.
--- * `%message`: is the message, made of concatenated arguments given by the caller.
+-- * `%namespace`: The configured namespace (in this case, the plugin name).
+-- * `%file_src`: The filename the log was called from.
+-- * `%line_src`: The line number the log was called from.
+-- * `%message`: The message, made of concatenated arguments given by the caller.
 --
 -- For example, the following call:
 --
@@ -213,23 +216,23 @@ local serializers = {
 -- 2017/07/09 19:36:25 [notice] 25932#0: *1 [kong] some_file.lua:54 hello world, client: 127.0.0.1, server: localhost, request: "GET /log HTTP/1.1", host: "localhost"
 -- ```
 --
--- If invoked from within a plugin (e.g. `key-auth`) it would include the
--- namespace prefix, like so:
+-- If invoked from within a plugin (for example, `key-auth`) it would include the
+-- namespace prefix:
 --
 -- ``` plain
 -- 2017/07/09 19:36:25 [notice] 25932#0: *1 [kong] some_file.lua:54 [key-auth] hello world, client: 127.0.0.1, server: localhost, request: "GET /log HTTP/1.1", host: "localhost"
 -- ```
 --
 -- @function kong.log
--- @phases init_worker, certificate, rewrite, access, header_filter, body_filter, log
--- @param ... all params will be concatenated and stringified before being sent to the log
--- @return Nothing; throws an error on invalid inputs.
+-- @phases init_worker, certificate, rewrite, access, header_filter, response, body_filter, log
+-- @param ... All params will be concatenated and stringified before being sent to the log.
+-- @return Nothing. Throws an error on invalid inputs.
 --
 -- @usage
 -- kong.log("hello ", "world") -- alias to kong.log.notice()
 
 ---
--- Similar to `kong.log()`, but the produced log will have the severity given by
+-- Similar to `kong.log()`, but the produced log has the severity given by
 -- `<level>`, instead of `notice`. The supported levels are:
 --
 -- * `kong.log.alert()`
@@ -253,17 +256,17 @@ local serializers = {
 -- 2017/07/09 19:36:25 [error] 25932#0: *1 [kong] some_file.lua:54 hello world, client: 127.0.0.1, server: localhost, request: "GET /log HTTP/1.1", host: "localhost"
 -- ```
 --
--- If invoked from within a plugin (e.g. `key-auth`) it would include the
--- namespace prefix, like so:
+-- If invoked from within a plugin (for example, `key-auth`) it would include the
+-- namespace prefix:
 --
 -- ``` plain
 -- 2017/07/09 19:36:25 [error] 25932#0: *1 [kong] some_file.lua:54 [key-auth] hello world, client: 127.0.0.1, server: localhost, request: "GET /log HTTP/1.1", host: "localhost"
 -- ```
 --
 -- @function kong.log.LEVEL
--- @phases init_worker, certificate, rewrite, access, header_filter, body_filter, log
--- @param ... all params will be concatenated and stringified before being sent to the log
--- @return Nothing; throws an error on invalid inputs.
+-- @phases init_worker, certificate, rewrite, access, header_filter, response, body_filter, log
+-- @param ... All params will be concatenated and stringified before being sent to the log.
+-- @return Nothing. Throws an error on invalid inputs.
 -- @usage
 -- kong.log.warn("something require attention")
 -- kong.log.err("something failed: ", err)
@@ -329,33 +332,32 @@ local function gen_log_func(lvl_const, imm_buf, to_string, stack_level, sep)
       local fullmsg_len = #fullmsg
       local WRAP = 120
 
-      if fullmsg:find("\n", 1, true) or fullmsg_len > WRAP then
-        local i = 1
+      local i = fullmsg:find("\n") + 1
+      local header = fullmsg:sub(1, i - 2) .. ("-"):rep(WRAP - i + 3) .. "+"
 
-        errlog.raw_log(lvl_const, "+" .. ("-"):rep(WRAP) .. "+")
+      errlog.raw_log(lvl_const, header)
 
-        while i <= fullmsg_len do
-          local part = string.sub(fullmsg, i, i + WRAP - 1)
-          local nl = part:match("()\n")
+      while i <= fullmsg_len do
+        local part = string.sub(fullmsg, i, i + WRAP - 1)
+        local nl = part:match("()\n")
 
-          if nl then
-            part = string.sub(fullmsg, i, i + nl - 2)
-            i = i + nl
+        if nl then
+          part = string.sub(fullmsg, i, i + nl - 2)
+          i = i + nl
 
-          else
-            i = i + WRAP
-          end
-
-          part = part .. (" "):rep(WRAP - #part)
-          errlog.raw_log(lvl_const, "|" .. part .. "|")
-
-          if i > fullmsg_len then
-            errlog.raw_log(lvl_const, "+" .. ("-"):rep(WRAP) .. "+")
-          end
+        else
+          i = i + WRAP
         end
 
-        return
+        part = part .. (" "):rep(WRAP - #part)
+        errlog.raw_log(lvl_const, "|" .. part .. "|")
+
+        if i > fullmsg_len then
+          errlog.raw_log(lvl_const, "+" .. ("-"):rep(WRAP) .. "+")
+        end
       end
+
+      return
     end
 
     errlog.raw_log(lvl_const, fullmsg)
@@ -363,26 +365,89 @@ local function gen_log_func(lvl_const, imm_buf, to_string, stack_level, sep)
 end
 
 
----
--- Like `kong.log()`, this function will produce a log with the `notice` level,
--- and accepts any number of arguments as well. If inspect logging is disabled
--- via `kong.log.inspect.off()`, then this function prints nothing, and is
--- aliased to a "NOP" function in order to save CPU cycles.
+--- Write a deprecation log line (similar to `kong.log.warn`).
+--
+-- Arguments given to this function can be of any type, but table arguments
+-- are converted to strings via `tostring` (thus potentially calling a
+-- table's `__tostring` metamethod if set). When the last argument is a table,
+-- it is considered as a deprecation metadata. The table can include the
+-- following properties:
 --
 -- ``` lua
--- kong.log.inspect("...")
+-- {
+--   after = "2.5.0",   -- deprecated after Kong version 2.5.0 (defaults to `nil`)
+--   removal = "3.0.0", -- about to be removed with Kong version 3.0.0 (defaults to `nil`)
+--   trace = true,      -- writes stack trace along with the deprecation message (defaults to `nil`)
+-- }
 -- ```
 --
+-- For example, the following call:
+--
+-- ``` lua
+-- kong.log.deprecation("hello ", "world")
+-- ```
+--
+-- would, within the core, produce a log line similar to:
+--
+-- ``` plain
+-- 2017/07/09 19:36:25 [warn] 25932#0: *1 [kong] some_file.lua:54 hello world, client: 127.0.0.1, server: localhost, request: "GET /log HTTP/1.1", host: "localhost"
+-- ```
+--
+-- If invoked from within a plugin (for example, `key-auth`) it would include the
+-- namespace prefix:
+--
+-- ``` plain
+-- 2017/07/09 19:36:25 [warn] 25932#0: *1 [kong] some_file.lua:54 [key-auth] hello world, client: 127.0.0.1, server: localhost, request: "GET /log HTTP/1.1", host: "localhost"
+-- ```
+--
+-- And with metatable, the following call:
+--
+-- ``` lua
+-- kong.log.deprecation("hello ", "world", { after = "2.5.0", removal = "3.0.0" })
+-- ```
+--
+-- would, within the core, produce a log line similar to:
+--
+-- ``` plain
+-- 2017/07/09 19:36:25 [warn] 25932#0: *1 [kong] some_file.lua:54 hello world (deprecated after 2.5.0, scheduled for removal in 3.0.0), client: 127.0.0.1, server: localhost, request: "GET /log HTTP/1.1", host: "localhost"
+-- ```
+--
+-- @function kong.log.deprecation
+-- @phases init_worker, certificate, rewrite, access, header_filter, response, body_filter, log
+-- @param ... all params will be concatenated and stringified before being sent to the log
+--            (if the last param is a table, it is considered as a deprecation metadata)
+-- @return Nothing; throws an error on invalid inputs.
+--
+-- @usage
+-- kong.log.deprecation("hello ", "world")
+-- kong.log.deprecation("hello ", "world", { after = "2.5.0" })
+-- kong.log.deprecation("hello ", "world", { removal = "3.0.0" })
+-- kong.log.deprecation("hello ", "world", { after = "2.5.0", removal = "3.0.0" })
+-- kong.log.deprecation("hello ", "world", { trace = true })
+local new_deprecation do
+  local mt = getmetatable(require("kong.deprecation"))
+  new_deprecation = function(write)
+    return setmetatable({ write = write }, mt)
+  end
+end
+
+
+---
+-- Like `kong.log()`, this function produces a log with a `notice` level
+-- and accepts any number of arguments. If inspect logging is disabled
+-- via `kong.log.inspect.off()`, then this function prints nothing, and is
+-- aliased to a "NOP" function to save CPU cycles.
+--
 -- This function differs from `kong.log()` in the sense that arguments will be
--- concatenated with a space(`" "`), and each argument will be
--- "pretty-printed":
+-- concatenated with a space(`" "`), and each argument is
+-- pretty-printed:
 --
--- * numbers will printed (e.g. `5` -> `"5"`)
--- * strings will be quoted (e.g. `"hi"` -> `'"hi"'`)
--- * array-like tables will be rendered (e.g. `{1,2,3}` -> `"{1, 2, 3}"`)
--- * dictionary-like tables will be rendered on multiple lines
+-- * Numbers are printed (e.g. `5` -> `"5"`)
+-- * Strings are quoted (e.g. `"hi"` -> `'"hi"'`)
+-- * Array-like tables are rendered (e.g. `{1,2,3}` -> `"{1, 2, 3}"`)
+-- * Dictionary-like tables are rendered on multiple lines
 --
--- This function is intended for use with debugging purposes in mind, and usage
+-- This function is intended for debugging, and usage
 -- in production code paths should be avoided due to the expensive formatting
 -- operations it can perform. Existing statements can be left in production code
 -- but nopped by calling `kong.log.inspect.off()`.
@@ -396,27 +461,24 @@ end
 --
 -- Where:
 --
--- * `%file_src`: is the file name from where the log was called from.
--- * `%func_name`: is the name of the function from where the log was called
---   from.
--- * `%line_src`: is the line number from where the log was called from.
--- * `%message`: is the message, made of concatenated, pretty-printed arguments
+-- * `%file_src`: The filename the log was called from.
+-- * `%func_name`: The name of the function the log was called from.
+-- * `%line_src`: The line number the log was called from.
+-- * `%message`: The message, made of concatenated, pretty-printed arguments
 --   given by the caller.
 --
 -- This function uses the [inspect.lua](https://github.com/kikito/inspect.lua)
 -- library to pretty-print its arguments.
 --
 -- @function kong.log.inspect
--- @phases init_worker, certificate, rewrite, access, header_filter, body_filter, log
--- @param ... Parameters will be concatenated with spaces between them and
--- rendered as described
+-- @phases init_worker, certificate, rewrite, access, header_filter, response, body_filter, log
+-- @param ... Parameters are concatenated with spaces between them and
+-- rendered as described.
 -- @usage
 -- kong.log.inspect("some value", a_variable)
 local new_inspect
 
 do
-  local _INSPECT_FORMAT = _PREFIX .. "%file_src:%func_name:%line_src %message"
-  local inspect_buf = assert(parse_modifiers(_INSPECT_FORMAT))
   local function nop() end
 
 
@@ -427,7 +489,10 @@ do
   }
 
 
-  new_inspect = function(format)
+  new_inspect = function(namespace)
+    local _INSPECT_FORMAT = _PREFIX .. "%file_src:%func_name:%line_src ["..namespace.."]\n%message"
+    local inspect_buf = assert(parse_modifiers(_INSPECT_FORMAT))
+
     local self = {}
 
 
@@ -437,11 +502,11 @@ do
     -- formatting of arguments.
     --
     -- @function kong.log.inspect.on
-    -- @phases init_worker, certificate, rewrite, access, header_filter, body_filter, log
+    -- @phases init_worker, certificate, rewrite, access, header_filter, response, body_filter, log
     -- @usage
     -- kong.log.inspect.on()
     function self.on()
-      self.print = gen_log_func(_LEVELS.notice, inspect_buf, inspect, 3, " ")
+      self.print = gen_log_func(_LEVELS.debug, inspect_buf, inspect, 3, " ")
     end
 
 
@@ -450,7 +515,7 @@ do
     -- `kong.log.inspect()` will be nopped.
     --
     -- @function kong.log.inspect.off
-    -- @phases init_worker, certificate, rewrite, access, header_filter, body_filter, log
+    -- @phases init_worker, certificate, rewrite, access, header_filter, response, body_filter, log
     -- @usage
     -- kong.log.inspect.off()
     function self.off()
@@ -485,25 +550,24 @@ local function get_default_serialize_values()
 end
 
 ---
--- Sets a value to be used on the `serialize` custom table
+-- Sets a value to be used on the `serialize` custom table.
 --
 -- Logging plugins use the output of `kong.log.serialize()` as a base for their logs.
+-- This function lets you customize the log output.
 --
--- This function allows customizing such output.
+-- It can be used to replace existing values in the output, or to delete
+-- existing values by passing `nil`.
 --
--- It can be used to replace existing values on the output.
--- It can be used to delete existing values by passing `nil`.
---
--- Note: the type checking of the `value` parameter can take some time so
+-- **Note:** The type-checking of the `value` parameter can take some time, so
 -- it is deferred to the `serialize()` call, which happens in the log
 -- phase in most real-usage cases.
 --
 -- @function kong.log.set_serialize_value
--- @phases certificate, rewrite, access, header_filter, body_filter, log
--- @tparam string key the name of the field.
--- @tparam number|string|boolean|table value value to be set. When a table is used, its keys must be numbers, strings, booleans, and its values can be numbers, strings or other tables like itself, recursively.
--- @tparam table options can contain two entries: options.mode can be `set` (the default, always sets), `add` (only add if entry does not already exist) and `replace` (only change value if it already exists).
--- @treturn table the request information table
+-- @phases certificate, rewrite, access, header_filter, response, body_filter, log
+-- @tparam string key The name of the field.
+-- @tparam number|string|boolean|table value Value to be set. When a table is used, its keys must be numbers, strings, or booleans, and its values can be numbers, strings, or other tables like itself, recursively.
+-- @tparam table options Can contain two entries: options.mode can be `set` (the default, always sets), `add` (only add if entry does not already exist) and `replace` (only change value if it already exists).
+-- @treturn table The request information table.
 -- @usage
 -- -- Adds a new value to the serialized table
 -- kong.log.set_serialize_value("my_new_value", 1)
@@ -627,9 +691,9 @@ do
 
 
   ---
-  -- Generates a table that contains information that are helpful for logging.
+  -- Generates a table with useful information for logging.
   --
-  -- This method can currently be used in the `http` subsystem.
+  -- This method can be used in the `http` subsystem.
   --
   -- The following fields are included in the returned table:
   -- * `client_ip` - client IP address in textual format.
@@ -661,9 +725,9 @@ do
   -- **Warning:** This function may return sensitive data (e.g., API keys).
   -- Consider filtering before writing it to unsecured locations.
   --
-  -- All fields in the returned table may be altered via kong.log.set_serialize_value
+  -- All fields in the returned table may be altered using `kong.log.set_serialize_value`.
   --
-  -- The following http authentication headers are redacted by default, if they appear in the request:
+  -- The following HTTP authentication headers are redacted by default, if they appear in the request:
   -- * `request.headers.authorization`
   -- * `request.headers.proxy-authorization`
   --
@@ -685,7 +749,6 @@ do
 
       local ctx = ongx.ctx
       local var = ongx.var
-      local req = ongx.req
 
       local authenticated_entity
       if ctx.authenticated_credential ~= nil then
@@ -719,6 +782,15 @@ do
         response_size = tonumber(response_size, 10)
       end
 
+      local upstream_uri = var.upstream_uri or ""
+      if upstream_uri ~= "" and not find(upstream_uri, "?", nil, true) then
+        if byte(ctx.request_uri or var.request_uri, -1) == QUESTION_MARK then
+          upstream_uri = upstream_uri .. "?"
+        elseif var.is_args == "?" then
+          upstream_uri = upstream_uri .. "?" .. (var.args or "")
+        end
+      end
+
       return edit_result(ctx, {
         request = {
           uri = request_uri,
@@ -729,7 +801,7 @@ do
           size = request_size,
           tls = request_tls
         },
-        upstream_uri = var.upstream_uri,
+        upstream_uri = upstream_uri,
         response = {
           status = ongx.status,
           headers = ongx.resp.get_headers(),
@@ -747,7 +819,7 @@ do
         service = ctx.service,
         consumer = ctx.authenticated_consumer,
         client_ip = var.remote_addr,
-        started_at = ctx.KONG_PROCESSING_START or (req.start_time() * 1000)
+        started_at = okong.request.get_start_time(),
       })
     end
 
@@ -756,10 +828,10 @@ do
       check_phase(PHASES_LOG)
 
       local ongx = (options or {}).ngx or ngx
+      local okong = (options or {}).kong or kong
 
       local ctx = ongx.ctx
       local var = ongx.var
-      local req = ongx.req
 
       local authenticated_entity
       if ctx.authenticated_credential ~= nil then
@@ -803,7 +875,7 @@ do
         service = ctx.service,
         consumer = ctx.authenticated_consumer,
         client_ip = var.remote_addr,
-        started_at = ctx.KONG_PROCESSING_START or (req.start_time() * 1000)
+        started_at = okong.request.get_start_time(),
       })
     end
   end
@@ -851,12 +923,13 @@ local function new_log(namespace, format)
     for log_lvl_name, log_lvl in pairs(_LEVELS) do
       self[log_lvl_name] = gen_log_func(log_lvl, buf)
     end
-  end
 
+    self.deprecation = new_deprecation(gen_log_func(_LEVELS.warn, buf, nil, 5))
+  end
 
   self.set_format(format)
 
-  self.inspect = new_inspect(format)
+  self.inspect = new_inspect(namespace)
 
   self.set_serialize_value = set_serialize_value
   self.serialize = serialize

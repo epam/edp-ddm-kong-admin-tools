@@ -21,24 +21,33 @@ Usage: ./kong-ngx-build [options...] -p <prefix> --openresty <openresty_ver> --o
 Required arguments:
   -p, --prefix <prefix>              Location where components should be installed.
       --openresty <openresty_ver>    Version of OpenResty to build, such as 1.13.6.2.
+
+Semi-Optional arguments:
       --openssl <openssl_ver>        Version of OpenSSL to build, such as 1.1.1c.
 
+      --boringssl <boringssl_ver>    Version of BoringSSL to build
+
+  One of `--openssl` or `--boringssl` needs to be provided. The default behavior
+
+                                     is to build OpenSSL.
+
 Optional arguments:
+      --ssl-provider                 Specify a provider for SSL libraries.
+
+                                     (Can be set to "openssl" or "boringssl")
+
       --no-openresty-patches         Do not apply openresty-patches while compiling OpenResty.
                                      (Patching is enabled by default)
-
-      --openresty-patches <branch>   Specify an openresty-patches branch to use when applying patches.
-                                     (Defaults to "master")
-                                     NOTE: This option is mutually exclusive with --openresty-patches-dir.
-
-      --openresty-patches-dir <dir>  Specify the root directory of a local copy of openresty-patches
-                                     to use instead of checking out a branch from the repository.
-                                     NOTE: This option is mutually exclusive with --openresty-patches.
 
       --no-kong-nginx-module         Do not include lua-kong-nginx-module while patching and compiling OpenResty.
                                      (Patching and compiling is enabled by default for OpenResty > 1.13.6.1)
 
       --kong-nginx-module <branch>   Specify a lua-kong-nginx-module branch to use when patching and compiling.
+                                     (Defaults to "master")
+
+      --no-resty-lmdb                Do not include lua-resty-lmdb while patching and compiling OpenResty.
+
+      --resty-lmdb <branch>          Specify a lua-resty-lmdb branch to use when patching and compiling.
                                      (Defaults to "master")
 
       --luarocks <luarocks_ver>      Version of LuaRocks to build, such as 3.1.2. If absent, LuaRocks

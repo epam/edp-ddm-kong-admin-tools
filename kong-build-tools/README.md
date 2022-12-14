@@ -1,160 +1,137 @@
 # Kong Build Tools
 
-The tools necessary to build Kong
+The tools necessary to build, package and release Kong
 
 ## Prerequisites
 
 - Kong source
 - Docker
+- docker-compose
 - Make
 
-Building non x86_64 architectures additionally requires:
-
-- [Docker-machine](https://github.com/docker/machine)
-- [Buildx Docker plugin](https://github.com/docker/buildx)
-- AWS Credentials
-
-## Building a Kong Distribution
-
-The default build task builds an Ubuntu xenial package of Kong where the Kong source is assumed to be
-in a sibling directory to where this repository is cloned
-
+All examples assume that Kong is a sibling directory of kong-build-tools and run from the kong-build-tools directory
+unless otherwise specified. This behaviour can be adjusted by setting a `KONG_SOURCE_LOCATION` environment variable
 ```
 cd ~
 git clone git@github.com:Kong/kong.git
 git clone git@github.com:Kong/kong-build-tools.git
 cd kong-build-tools
-make build-kong
+```
+
+Packaging arm64 architectures additionally requires:
+
+- [Docker-machine](https://github.com/docker/machine)
+- [Buildx Docker plugin](https://github.com/docker/buildx)
+- AWS Credentials (or access via an instance profile)
+
+Packaging kong-ee additionally requires:
+
+- A `GITHUB_TOKEN` environment variable with access to Kong's private github repositories
+
+## Building a Kong Package
+
+```
+export PACKAGE_TYPE=deb RESTY_IMAGE_BASE=ubuntu RESTY_IMAGE_TAG=20.04 # defaults if not set
+make package-kong
 ls output/
-kong-0.0.0.xenial.all.deb
+kong-x.y.z.20.04.all.deb
 ```
 
-Environment variables:
+### Details
 
-You can find all available environment variables at the top of the [Makefile](https://github.com/Kong/kong-build-tools/blob/master/Makefile).
-The most common ones are the following:
+![building kong](/docs/Package%20Kong.png?raw=true)
 
+The Docker files in the dockerfiles directory build on each other in the following manner:
+
+- `Dockerfile.package` builds on top of the result of `Dockerfile.kong` to package Kong using `fpm-entrypoint.sh`
+- `Dockerfile.kong` builds on top of the result of `Dockerfile.openresty` to build Kong using `build-kong.sh`
+- `Dockerfile.openresty` builds on top of the result of `Dockerfile.(deb|apk|rpm)` to build the Kong prerequisites using `openresty-build-tools/kong-ngx-build`
+- [github://kong/kong-build-tools-base-images](https://github.com/Kong/kong-build-tools-base-images) builds the compilation / building prerequisites
+
+## Building a Kong Docker Image
+
+Prerequisite: you did the packaging step
 ```
-KONG_SOURCE_LOCATION=/src/projects/custom-kong-location
-KONG_PACKAGE_NAME=custom-kong-name
-KONG_VERSION=v1.0.0
-RESTY_IMAGE_BASE=ubuntu|centos|rhel|debian|alpine|amazonlinux
-RESTY_IMAGE_TAG=xenial|bionic|6|7|8|jessie|stretch|latest|latest
-PACKAGE_TYPE=deb|rpm|apk
-```
-
-For RedHat additionally export:
-```
-export REDHAT_USERNAME=rhuser
-export REDHAT_PASSWORD=password
-```
-
-## Building a Container
-
-Sometimes it's useful to have a docker image with the Kong asset installed that you just built.
-
-```
-export KONG_TEST_CONTAINER_NAME=kong:testing
+export KONG_TEST_CONTAINER_NAME=kong/kong:x.y.z-ubuntu-20.04 #default if not set
 make build-test-container
 ```
 
-## Testing
+## Releasing Docker Images
 
-*Prerequisites:*
+Prerequisite: you did the packaging step and you're logged into docker with the necessary push permissions
+```
+export DOCKER_RELEASE_REPOSITORY=kong/kong KONG_TEST_CONTAINER_TAG=x.y.z-ubuntu-20.04 #default if not set
+make release-kong-docker-images
+```
 
-- Docker
-- [Kind](https://github.com/kubernetes-sigs/kind)
-- [Helm](https://github.com/helm/helm)
+## Running Kong Tests
 
 ```
+make test-kong
+```
+
+**Environment variables:**
+
+Refer to [git://kong/.ci/run_tests.sh](https://github.com/Kong/kong/blob/master/.ci/run_tests.sh) for the authoritative environment variables.
+The most common ones are the following:
+
+```
+TEST_DATABASE = "off|postgres|cassandra"
+TEST_SUITE = "dbless|plugins|unit|integration"
+```
+
+### Details
+
+![testing kong](/docs/Test%20Kong.png?raw=true)
+
+- `docker-compose.yml` runs the result of `Dockerfile.test` as well as postgres, cassandra, grpc and redis
+- `Dockerfile.test` builds on top of the result of `Dockerfile.openresty` to build Kong for development/testing
+- `Dockerfile.openresty` builds on top of the result of `Dockerfile.(deb|apk|rpm)` to build the Kong prerequisites using `openresty-build-tools/kong-ngx-build`
+- `Dockerfile.(deb|apk|rpm)` builds the compilation / building prerequisites
+
+## Running Packaging / Smoke Tests
+
+The Kong Build Tools functional tests suite run a tests on a Kong package which we then integrate
+into our official docker build image dockerfile.
+
+```
+make package-kong
 make test
 ```
 
-## Functional Tests
+### Details
 
-The Kong functional tests use [Tavern](https://taverntesting.github.io/).
+![releasing kong](/docs/Release%20Kong.png?raw=true)
 
-*Prerequisites*
+`test/build_container.sh` clones `git://kong/docker-kong` and provides the Dockerfile with a packaged Kong asset
 
-- Docker
-- A Packaged Kong Release (`make build-kong`)
+**01-package**
 
-```
-make test
-```
+Validates the version required per `git://kong/.requirements` of our prerequisites is what ended up being installed.
+Also does some rudimentary checks of the systemd and logrotate we include with our packages
 
-Will run the functional tests against the defaults specified in the Makefile prefixed with `TEST_`
+**02-api**
 
-The available ENV's and their defaults are as follows
+Functional Admin API and Proxy tests.
 
-```
-TEST_ADMIN_PROTOCOL?=http://
-TEST_ADMIN_PORT?=8001
-TEST_HOST?=localhost
-TEST_ADMIN_URI?=$(TEST_ADMIN_PROTOCOL)$(TEST_HOST):$(TEST_ADMIN_PORT)
-TEST_PROXY_PROTOCOL?=http://
-TEST_PROXY_PORT?=8000
-TEST_PROXY_URI?=$(TEST_PROXY_PROTOCOL)$(TEST_HOST):$(TEST_PROXY_PORT)
-```
-
-### Developing Functional Tests
-
-With the same prerequisites as running functional tests
-
-```
-make test
-make develop-tests
-py.test test_your_test.tavern.yaml # Expect warnings about https and structure different
-```
-
-## Releasing a Kong Distribution
+## Releasing Kong
 
 The same defaults that applied when creating a packaged version of Kong apply to releasing said package
-to bintray and can be changed by environment variables. Presumes that the package you want to release
+to our internal server and can be changed by environment variables. Presumes that the package you want to release
 already exists in the output directory.
 
 ```
-export BINTRAY_USR=user
-export BINTRAY_KEY=key
+export PULP_USR=user
+export PULP_PSW=password
 export RESTY_IMAGE_BASE=seeabove
 export RESTY_IMAGE_TAG=seeabove
 export KONG_PACKAGE_NAME=somename
-export KONG_VERSION=1.2.3
+make package-kong
 make release-kong
 ```
 
 Required release ENV variables:
 ```
-BINTRAY_USR
-BINTRAY_KEY
-```
-
-Required release ENV variables that have defaults if they are not set:
-```
-RESTY_IMAGE_BASE
-RESTY_IMAGE_TAG
-KONG_PACKAGE_NAME
-KONG_VERSION
-```
-
-Optional release ENV variables:
-```
-REPOSITORY_TYPE
-REPOSITORY_NAME
-REPOSITORY_OS_NAME
-```
-
-The defaults when the optional arguments aren't passed are (in the following order ubuntu|rhel|centos|alpine):
-```
-REPOSITORY_TYPE=deb|deb|rpm|generic
-REPOSITORY_NAME=$KONG_PACKAGE_NAME-$REPOSITORY_TYPE
-REPOSITORY_OS_NAME=ubuntu|rhel|centos|alpine-tar
-
-bintray.com/kong/$REPOSITORY_NAME/$REPOSITORY_OS_NAME/$KONG_VERSION/$KONG_PACKAGE_NAME-$KONG_VERSION.$OUTPUT_FILE_SUFFIX
-```
-
-Using all defaults one would end up with
-
-```
-bintray.com/kong/kong-deb/ubuntu/0.0.0/kong-0.0.0.xenial.all.deb
+PULP_USR
+PULP_PSW
 ```

@@ -9,7 +9,7 @@ local pl_dir = require "pl.dir"
 local pl_file = require "pl.file"
 local pl_template = require "pl.template"
 local pl_path = require "pl.path"
-local pl_text = require "pl.text"
+local pl_stringx = require "pl.stringx"
 local uuid = require "resty.jit-uuid"
 
 
@@ -56,7 +56,7 @@ local function create_conf(params)
     return nil, err
   end
 
-  local compiled_tpl = pl_text.Template(tpl:render(params, { ipairs = ipairs }))
+  local compiled_tpl = pl_stringx.Template(tpl:render(params, { ipairs = ipairs }))
   local conf_filename = params.base_path .. "/nginx.conf"
   local conf, err = io.open (conf_filename, "w")
   if err then
@@ -90,7 +90,7 @@ local function count_results(logs_dir)
       if host then
         local host_no_port = ngx.re.match(m[3], host_regex)
         if host_no_port then
-          host = host_no_port[1]
+          host = host_no_port[2]
         end
       else
         host = "nonamehost"
@@ -143,6 +143,7 @@ function https_server.start(self)
 
   local conf_params = {
     base_path = self.base_path,
+    delay = self.delay,
     cert_path = "./",
     check_hostname = self.check_hostname,
     logs_dir = self.logs_dir,
@@ -209,7 +210,7 @@ function https_server.shutdown(self)
 end
 
 
-function https_server.new(port, hostname, protocol, check_hostname, workers)
+function https_server.new(port, hostname, protocol, check_hostname, workers, delay)
   local self = setmetatable({}, https_server)
   local host
   local hosts
@@ -226,6 +227,7 @@ function https_server.new(port, hostname, protocol, check_hostname, workers)
   end
 
   self.check_hostname = check_hostname or false
+  self.delay = tonumber(delay) or 0
   self.host = host or "localhost"
   self.hosts = hosts
   self.http_port = port

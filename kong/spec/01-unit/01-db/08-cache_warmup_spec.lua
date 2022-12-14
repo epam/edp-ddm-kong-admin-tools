@@ -1,4 +1,6 @@
 local cache_warmup = require("kong.cache.warmup")
+local helpers = require("spec.helpers")
+
 
 
 local function mock_entity(db_data, entity_name, cache_key)
@@ -211,9 +213,15 @@ describe("cache_warmup", function()
 
     cache_warmup._mock_kong(kong)
 
+    local runs_old = _G.timerng:stats().sys.runs
+
     assert.truthy(cache_warmup.execute({"my_entity", "services"}))
 
-    ngx.sleep(0) -- yield so that async DNS caching happens
+    -- waiting async DNS cacheing
+    helpers.wait_until(function ()
+      local runs = _G.timerng:stats().sys.runs
+      return runs_old < runs
+    end)
 
     -- `my_entity` isn't a core entity; lookup is on client cache
     assert.same(kong.cache:get("111").bbb, 222)
@@ -226,6 +234,68 @@ describe("cache_warmup", function()
     -- skipped IP entry
     assert.same({ "example.com", "example.test" }, dns_queries)
   end)
+
+
+  it("does not warm up upstream names when caching services", function()
+    local cache_table = {}
+    local db_data = {
+      ["my_entity"] = {
+        { aaa = 111, bbb = 222 },
+        { aaa = 333, bbb = 444 },
+      },
+      ["services"] = {
+        { name = "a", host = "example.com", },
+        { name = "b", host = "1.2.3.4", }, -- should be skipped by DNS caching
+        { name = "c", host = "example.test", },
+        { name = "d", host = "thisisan.upstream.test", }, -- should be skipped by DNS caching
+      },
+      ["upstreams"] = {
+        { name = "thisisan.upstream.test", },
+      },
+    }
+    local dns_queries = {}
+
+    local kong = {
+      db = {
+        my_entity = mock_entity(db_data, "my_entity", "aaa"),
+        services = mock_entity(db_data, "services", "name"),
+        upstreams = mock_entity(db_data, "upstreams", "name"),
+      },
+      core_cache = mock_cache(cache_table),
+      cache = mock_cache({}),
+      dns = {
+        toip = function(query)
+          table.insert(dns_queries, query)
+        end,
+      }
+    }
+
+    cache_warmup._mock_kong(kong)
+
+    local runs_old = _G.timerng:stats().sys.runs
+
+    assert.truthy(cache_warmup.execute({"my_entity", "services"}))
+
+    -- waiting async DNS cacheing
+    helpers.wait_until(function ()
+      local runs = _G.timerng:stats().sys.runs
+      return runs_old < runs
+    end)
+
+    -- `my_entity` isn't a core entity; lookup is on client cache
+    assert.same(kong.cache:get("111").bbb, 222)
+    assert.same(kong.cache:get("333").bbb, 444)
+
+    assert.same(kong.core_cache:get("a").host, "example.com")
+    assert.same(kong.core_cache:get("b").host, "1.2.3.4")
+    assert.same(kong.core_cache:get("c").host, "example.test")
+    assert.same(kong.core_cache:get("d").host, "thisisan.upstream.test")
+
+    -- skipped IP entry
+    assert.same({ "example.com", "example.test" }, dns_queries)
+
+  end)
+
 
   it("logs a warning on bad entities", function()
     local logged_warnings = {}

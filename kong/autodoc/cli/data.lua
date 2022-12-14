@@ -8,10 +8,7 @@ data.header = [[
 #  the files in https://github.com/Kong/kong/tree/master/autodoc/cli
 #
 title: CLI Reference
-skip_read_time: true
 ---
-
-## Introduction
 
 The provided CLI (*Command Line Interface*) allows you to start, stop, and
 manage your Kong instances. The CLI manages your local node (as in, on the
@@ -27,8 +24,6 @@ All commands take a set of special, optional flags as arguments:
 * `--v`: enable verbose mode
 * `--vv`: enable debug mode (noisy)
 
-[Back to top](#introduction)
-
 ## Available commands
 
 ]]
@@ -41,7 +36,7 @@ data.command_intro = {
 
 data.footer = [[
 
-[configuration-reference]: /{{page.kong_version}}/configuration
+[configuration-reference]: /gateway/{{page.kong_version}}/reference/configuration/
 ]]
 
 return data

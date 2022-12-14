@@ -42,10 +42,26 @@
                                           # it will be placed under the
                                           # `prefix` location.
 
+
 #proxy_error_log = logs/error.log         # Path for proxy port request error
                                           # logs. The granularity of these logs
                                           # is adjusted by the `log_level`
                                           # property.
+
+#proxy_stream_access_log = logs/access.log basic # Path for tcp streams proxy port access
+                                                 # logs. Set this value to `off` to
+                                                 # disable logging proxy requests.
+                                                 # If this value is a relative path,
+                                                 # it will be placed under the
+                                                 # `prefix` location.
+                                                 # `basic` is defined as `'$remote_addr [$time_local] '
+                                                 # '$protocol $status $bytes_sent $bytes_received '
+                                                 # '$session_time'`
+
+#proxy_stream_error_log = logs/error.log         # Path for tcp streams proxy port request error
+                                                 # logs. The granularity of these logs
+                                                 # is adjusted by the `log_level`
+                                                 # property.
 
 #admin_access_log = logs/admin_access.log # Path for Admin API request access
                                           # logs. If Hybrid Mode is enabled
@@ -68,7 +84,7 @@
 
 #status_access_log = off                  # Path for Status API request access
                                           # logs. The default value of `off`
-                                          # implies that loggin for this API
+                                          # implies that logging for this API
                                           # is disabled by default.
                                           # If this value is a relative path,
                                           # it will be placed under the
@@ -78,6 +94,48 @@
                                           # logs. The granularity of these logs
                                           # is adjusted by the `log_level`
                                           # property.
+
+#vaults = bundled                # Comma-separated list of vaults this node
+                                 # should load. By default, all the bundled
+                                 # vaults are enabled.
+                                 #
+                                 # The specified name(s) will be substituted as
+                                 # such in the Lua namespace:
+                                 # `kong.vaults.{name}.*`.
+
+#opentelemetry_tracing = off     # Comma-separated list of tracing instrumentations
+                                 # this node should load. By default, no instrumentations
+                                 # are enabled.
+                                 #
+                                 # Valid values to this setting are:
+                                 #
+                                 # - `off`: do not enable instrumentations.
+                                 # - `request`: only enable request-level instrumentations.
+                                 # - `all`: enable all the following instrumentations.
+                                 # - `db_query`: trace database query, including
+                                 #   Postgres and Cassandra.
+                                 # - `dns_query`: trace DNS query.
+                                 # - `router`: trace router execution, including
+                                 #   router rebuilding.
+                                 # - `http_client`: trace OpenResty HTTP client requests.
+                                 # - `balancer`: trace balancer retries.
+                                 # - `plugin_rewrite`: trace plugins iterator
+                                 #   execution with rewrite phase.
+                                 # - `plugin_access`: trace plugins iterator
+                                 #   execution with access phase.
+                                 # - `plugin_header_filter`: trace plugins iterator
+                                 #   execution with header_filter phase.
+                                 #
+                                 # **Note:** In the current implementation,
+                                 # tracing instrumentations are not enabled in
+                                 # stream mode.
+
+#opentelemetry_tracing_sampling_rate = 1.0  # Tracing instrumentation sampling rate.
+                                            # Tracer samples a fixed percentage of all spans
+                                            # following the sampling rate.
+                                            #
+                                            # Example: `0.25`, this should account for 25% of all traces.
+
 
 #plugins = bundled               # Comma-separated list of plugins this node
                                  # should load. By default, only plugins
@@ -224,9 +282,18 @@
                                  # DP node.
 
 #cluster_ca_cert =               # The trusted CA certificate file in PEM
-                                 # format used to verify the `cluster_cert`.
-                                 # Required if `cluster_mtls` is set to `pki`,
-                                 # ignored otherwise.
+                                 # format used for Control Plane to verify
+                                 # Data Plane's certificate and Data Plane
+                                 # to verify Control Plane's certificate.
+                                 # Required on data plane if `cluster_mtls`
+                                 # is set to `pki`.
+                                 # If Control Plane certificate is issued
+                                 # by a well known CA, user can set
+                                 # `lua_ssl_trusted_certificate=system`
+                                 # on Data Plane and leave this field empty.
+                                 #
+                                 # This field is ignored if `cluster_mtls` is
+                                 # set to `shared`.
 
 #------------------------------------------------------------------------------
 # HYBRID MODE DATA PLANE
@@ -245,6 +312,11 @@
                                  # address of the control plane node from
                                  # which configuration updates will be fetched,
                                  # in `host:port` format.
+
+#cluster_max_payload = 4194304
+                                 # This sets the maximum payload size allowed
+                                 # to be sent across from CP to DP in Hybrid mode
+                                 # Default is 4Mb - 4 * 1024 * 1024 due to historical reasons
 
 #------------------------------------------------------------------------------
 # HYBRID MODE CONTROL PLANE
@@ -278,6 +350,28 @@
                          # 14 days. That is, if CP haven't heard from a DP for
                          # 14 days, its entry will be removed.
 
+#cluster_ocsp = off
+                         # Whether to check for revocation status of DP
+                         # certificates using OCSP (Online Certificate Status Protocol).
+                         # If enabled, the DP certificate should contain the
+                         # "Certificate Authority Information Access" extension
+                         # and the OCSP method with URI of which the OCSP responder
+                         # can be reached from CP.
+                         #
+                         # OCSP checks are only performed on CP nodes, it has no
+                         # effect on DP nodes.
+                         #
+                         # Valid values to this setting are:
+                         #
+                         # - `on`: OCSP revocation check is enabled and DP
+                         #   must pass the check in order to establish
+                         #   connection with CP.
+                         # - `off`: OCSP revocation check is disabled.
+                         # - `optional`: OCSP revocation check will be attempted,
+                         #   however, if the required extension is not
+                         #   found inside DP provided certificate
+                         #   or communication with the OCSP responder
+                         #   failed, then DP is still allowed through.
 #------------------------------------------------------------------------------
 # NGINX
 #------------------------------------------------------------------------------
@@ -319,6 +413,19 @@
                          #   effect it is necessary to raise
                          #   `net.core.somaxconn` at the same time to match or
                          #   exceed the `backlog` number set.
+                         # - `ipv6only=on|off` whether an IPv6 socket listening
+                         #   on a wildcard address [::] will accept only IPv6
+                         #   connections or both IPv6 and IPv4 connections
+                         # - so_keepalive=on|off|[keepidle]:[keepintvl]:[keepcnt]
+                         #   configures the “TCP keepalive” behavior for the listening
+                         #   socket. If this parameter is omitted then the operating
+                         #   system’s settings will be in effect for the socket. If it
+                         #   is set to the value “on”, the SO_KEEPALIVE option is turned
+                         #   on for the socket. If it is set to the value “off”, the
+                         #   SO_KEEPALIVE option is turned off for the socket. Some
+                         #   operating systems support setting of TCP keepalive parameters
+                         #   on a per-socket basis using the TCP_KEEPIDLE, TCP_KEEPINTVL,
+                         #   and TCP_KEEPCNT socket options.
                          #
                          # This value can be set to `off`, thus disabling
                          # the HTTP/HTTPS proxy port for this node.
@@ -371,6 +478,19 @@
                          #   effect it is necessary to raise
                          #   `net.core.somaxconn` at the same time to match or
                          #   exceed the `backlog` number set.
+                         # - `ipv6only=on|off` whether an IPv6 socket listening
+                         #   on a wildcard address [::] will accept only IPv6
+                         #   connections or both IPv6 and IPv4 connections
+                         # - so_keepalive=on|off|[keepidle]:[keepintvl]:[keepcnt]
+                         #   configures the “TCP keepalive” behavior for the listening
+                         #   socket. If this parameter is omitted then the operating
+                         #   system’s settings will be in effect for the socket. If it
+                         #   is set to the value “on”, the SO_KEEPALIVE option is turned
+                         #   on for the socket. If it is set to the value “off”, the
+                         #   SO_KEEPALIVE option is turned off for the socket. Some
+                         #   operating systems support setting of TCP keepalive parameters
+                         #   on a per-socket basis using the TCP_KEEPIDLE, TCP_KEEPINTVL,
+                         #   and TCP_KEEPCNT socket options.
                          #
                          # Examples:
                          #
@@ -423,6 +543,19 @@
                          #   effect it is necessary to raise
                          #   `net.core.somaxconn` at the same time to match or
                          #   exceed the `backlog` number set.
+                         # - `ipv6only=on|off` whether an IPv6 socket listening
+                         #   on a wildcard address [::] will accept only IPv6
+                         #   connections or both IPv6 and IPv4 connections
+                         # - so_keepalive=on|off|[keepidle]:[keepintvl]:[keepcnt]
+                         #   configures the “TCP keepalive” behavior for the listening
+                         #   socket. If this parameter is omitted then the operating
+                         #   system’s settings will be in effect for the socket. If it
+                         #   is set to the value “on”, the SO_KEEPALIVE option is turned
+                         #   on for the socket. If it is set to the value “off”, the
+                         #   SO_KEEPALIVE option is turned off for the socket. Some
+                         #   operating systems support setting of TCP keepalive parameters
+                         #   on a per-socket basis using the TCP_KEEPIDLE, TCP_KEEPINTVL,
+                         #   and TCP_KEEPCNT socket options.
                          #
                          # This value can be set to `off`, thus disabling
                          # the Admin interface for this node, enabling a
@@ -489,11 +622,12 @@
 
 #ssl_cipher_suite = intermediate # Defines the TLS ciphers served by Nginx.
                                  # Accepted values are `modern`,
-                                 # `intermediate`, `old`, or `custom`.
+                                 # `intermediate`, `old`, `fips` or `custom`.
                                  #
                                  # See https://wiki.mozilla.org/Security/Server_Side_TLS
                                  # for detailed descriptions of each cipher
-                                 # suite.
+                                 # suite. `fips` cipher suites are as decribed in
+                                 # https://wiki.openssl.org/index.php/FIPS_mode_and_TLS.
 
 #ssl_ciphers =                   # Defines a custom list of TLS ciphers to be
                                  # served by Nginx. This list must conform to
@@ -798,7 +932,8 @@
                                  #
                                  # The special and default value of `auto` sets this
                                  # value to `ulimit -n` with the upper bound limited to
-                                 # 16384 as a measure to protect against excess memory use.
+                                 # 16384 as a measure to protect against excess memory use,
+                                 # and the lower bound of 1024 as a good default.
                                  #
                                  # See http://nginx.org/en/docs/ngx_core_module.html#worker_rlimit_nofile
 
@@ -808,7 +943,8 @@
                                  #
                                  # The special and default value of `auto` sets this
                                  # value to `ulimit -n` with the upper bound limited to
-                                 # 16384 as a measure to protect against excess memory use.
+                                 # 16384 as a measure to protect against excess memory use,
+                                 # and the lower bound of 1024 as a good default.
                                  #
                                  # See http://nginx.org/en/docs/ngx_core_module.html#worker_connections
 
@@ -856,6 +992,11 @@
 
 #nginx_admin_client_body_buffer_size = 10m  # Defines the buffer size for reading
                                             # the request body on Admin API.
+
+#nginx_http_lua_regex_match_limit = 100000  # Global `MATCH_LIMIT` for PCRE
+                                            # regex matching. The default of `100000` should ensure
+                                            # at worst any regex Kong executes could finish within
+                                            # roughly 2 seconds.
 
 #------------------------------------------------------------------------------
 # DATASTORE
@@ -1094,6 +1235,14 @@
                                 # in the cache never expire, which means that
                                 # `db_cache_ttl` should preserve its default
                                 # value of 0.
+                                #
+                                # If the Hybrid mode `role` is set to `data_plane`
+                                # and there's no configuration cache file,
+                                # this configuration is used before connecting
+                                # to the Control Plane node as a user-controlled
+                                # fallback.
+
+#declarative_config_string =    # The declarative configuration as a string
 
 #------------------------------------------------------------------------------
 # DATASTORE CACHE
@@ -1231,6 +1380,13 @@
                                  # completes, or the `dns_stale_ttl` number of
                                  # seconds have passed.
 
+#dns_cache_size = 10000          # Defines the maximum allowed number of
+                                 # DNS records stored in memory cache.
+                                 # Least recently used DNS records are discarded
+                                 # from cache if it is full. Both errors and
+                                 # data are cached, therefore a single name query
+                                 # can easily take up 10-15 slots.
+
 #dns_not_found_ttl = 30          # TTL in seconds for empty DNS responses and
                                  # "(3) name error" responses.
 
@@ -1246,20 +1402,24 @@
 # TUNING & BEHAVIOR
 #------------------------------------------------------------------------------
 
-#worker_consistency = strict
+#worker_consistency = eventual
                                  # Defines whether this node should rebuild its
                                  # state synchronously or asynchronously (the
                                  # balancers and the router are rebuilt on
                                  # updates that affects them, e.g., updates to
                                  # Routes, Services or Upstreams, via the Admin
                                  # API or loading a declarative configuration
-                                 # file).
+                                 # file). (This option is deprecated and will be
+                                 # removed in future releases. The new default
+                                 # is `eventual`.)
                                  #
                                  # Accepted values are:
                                  #
                                  # - `strict`: the router will be rebuilt
                                  #   synchronously, causing incoming requests to
                                  #   be delayed until the rebuild is finished.
+                                 #   (This option is deprecated and will be removed
+                                 #    in future releases. The new default is `eventual`)
                                  # - `eventual`: the router will be rebuilt
                                  #   asynchronously via a recurring background
                                  #   job running every second inside of each
@@ -1287,6 +1447,40 @@
                                  # it might take more time to propagate changes
                                  # to each individual worker.
 
+#router_flavor = traditional_compatible
+                                 # Selects the router implementation to use when
+                                 # performing request routing. Incremental router
+                                 # rebuild is available when the flavor is set
+                                 # to either `expressions` or
+                                 # `traditional_compatible` which could
+                                 # significantly shorten rebuild time for large
+                                 # number of routes.
+                                 #
+                                 # Accepted values are:
+                                 #
+                                 # - `traditional_compatible`: the DSL based expression
+                                 #   router engine will be used under the hood. However
+                                 #   the router config interface will be the same
+                                 #   as `traditional` and expressions are
+                                 #   automatically generated at router build time.
+                                 #   The `expression` field on the `Route` object
+                                 #   is not visible.
+                                 # - `expressions`: the DSL based expression router engine
+                                 #   will be used under the hood. Traditional router
+                                 #   config interface is not visible and you must write
+                                 #   Router Expression manually and provide them in the
+                                 #   `expression` field on the `Route` object.
+                                 # - `traditional`: the pre-3.0 Router engine will be
+                                 #   used. Config interface will be the same as
+                                 #   pre-3.0 Kong and the `expression` field on the
+                                 #   `Route` object is not visible.
+                                 #
+                                 #   Deprecation warning: In Kong 3.0, `traditional`
+                                 #   mode should be avoided and only be used in case
+                                 #   `traditional_compatible` did not work as expected.
+                                 #   This flavor of router will be removed in the next
+                                 #   major release of Kong.
+
 #------------------------------------------------------------------------------
 # MISCELLANEOUS
 #------------------------------------------------------------------------------
@@ -1298,33 +1492,30 @@
 # https://github.com/openresty/lua-nginx-module
 
 
-#lua_ssl_trusted_certificate =   # Comma-separated list of paths to certificate
-                                 # authority files for Lua cosockets in PEM format.
-                                 #
-                                 # The special value `system` attempts to search for the
-                                 # "usual default" provided by each distro, according
-                                 # to an arbitrary heuristic. In the current implementation,
-                                 # The following pathnames will be tested in order,
-                                 # and the first one found will be used:
-                                 #
-                                 # - /etc/ssl/certs/ca-certificates.crt (Debian/Ubuntu/Gentoo)
-                                 # - /etc/pki/tls/certs/ca-bundle.crt (Fedora/RHEL 6)
-                                 # - /etc/ssl/ca-bundle.pem (OpenSUSE)
-                                 # - /etc/pki/tls/cacert.pem (OpenELEC)
-                                 # - /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem (CentOS/RHEL 7)
-                                 # - /etc/ssl/cert.pem (OpenBSD, Alpine)
-                                 #
-                                 # If no file is found on any of these paths, an error will
-                                 # be raised.
-                                 #
-                                 # `system` can be used by itself or in conjunction with other
-                                 # CA filepaths.
-                                 #
-                                 # When `pg_ssl_verify` or `cassandra_ssl_verify`
-                                 # are enabled, these certificate authority files will be
-                                 # used for verifying Kong's database connections.
-                                 #
-                                 # See https://github.com/openresty/lua-nginx-module#lua_ssl_trusted_certificate
+#lua_ssl_trusted_certificate = system   # Comma-separated list of paths to certificate
+                                        # authority files for Lua cosockets in PEM format.
+                                        #
+                                        # The special value `system` attempts to search for the
+                                        # "usual default" provided by each distro, according
+                                        # to an arbitrary heuristic. In the current implementation,
+                                        # The following pathnames will be tested in order,
+                                        # and the first one found will be used:
+                                        #
+                                        # - /etc/ssl/certs/ca-certificates.crt (Debian/Ubuntu/Gentoo)
+                                        # - /etc/pki/tls/certs/ca-bundle.crt (Fedora/RHEL 6)
+                                        # - /etc/ssl/ca-bundle.pem (OpenSUSE)
+                                        # - /etc/pki/tls/cacert.pem (OpenELEC)
+                                        # - /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem (CentOS/RHEL 7)
+                                        # - /etc/ssl/cert.pem (OpenBSD, Alpine)
+                                        #
+                                        # `system` can be used by itself or in conjunction with other
+                                        # CA filepaths.
+                                        #
+                                        # When `pg_ssl_verify` or `cassandra_ssl_verify`
+                                        # are enabled, these certificate authority files will be
+                                        # used for verifying Kong's database connections.
+                                        #
+                                        # See https://github.com/openresty/lua-nginx-module#lua_ssl_trusted_certificate
 
 #lua_ssl_verify_depth = 1        # Sets the verification depth in the server
                                  # certificates chain used by Lua cosockets,
@@ -1337,6 +1528,17 @@
                                  # based DoS attacks.
                                  #
                                  # See https://github.com/openresty/lua-nginx-module#lua_ssl_verify_depth
+
+#lua_ssl_protocols = TLSv1.1 TLSv1.2 TLSv1.3   # Defines the TLS versions supported
+                                               # when handshaking with OpenResty's
+                                               # TCP cosocket APIs.
+                                               #
+                                               # This affects connections made by Lua
+                                               # code, such as connections to the
+                                               # database Kong uses, or when sending logs
+                                               # using a logging plugin. It does *not*
+                                               # affect connections made to the upstream
+                                               # Service or from downstream clients.
 
 #lua_package_path = ./?.lua;./?/init.lua;  # Sets the Lua module search path
                                            # (LUA_PATH). Useful when developing
@@ -1452,3 +1654,14 @@
                                      # **Warning**: Certain variables, when made
                                      # available, may create opportunities to
                                      # escape the sandbox.
+
+#openresty_path =                 # Path to the OpenResty installation that Kong
+                                  # will use. When this is empty (the default),
+                                  # Kong determines the OpenResty installation
+                                  # by searching for a system-installed OpenResty
+                                  # and falling back to searching $PATH for the
+                                  # nginx binary.
+                                  #
+                                  # Setting this attribute disables the search
+                                  # behavior and explicitly instructs Kong which
+                                  # OpenResty installation to use.

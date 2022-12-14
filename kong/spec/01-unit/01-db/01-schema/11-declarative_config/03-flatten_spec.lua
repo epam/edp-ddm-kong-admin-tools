@@ -46,6 +46,7 @@ local function idempotent(tbl, err)
   end
 
   local function recurse_fields(t)
+    helpers.deep_sort(t)
     for k,v in sortedpairs(t) do
       if k == "id" and utils.is_valid_uuid(v) then
         t[k] = "UUID"
@@ -106,6 +107,7 @@ describe("declarative config: flatten", function()
           - name: foo
             host: example.com
             protocol: https
+            enabled: false
             _comment: my comment
             _ignore:
             - foo: bar
@@ -138,6 +140,7 @@ describe("declarative config: flatten", function()
               tls_verify_depth = null,
               tls_verify = null,
               ca_certificates = null,
+              enabled = true,
             },
             {
               id = "UUID",
@@ -157,17 +160,19 @@ describe("declarative config: flatten", function()
               tls_verify_depth = null,
               tls_verify = null,
               ca_certificates = null,
+              enabled = false,
             },
           }
         }, idempotent(config))
       end)
 
       it("accepts field names with the same name as entities", function()
+        -- "snis" is also an entity
         local config = assert(lyaml.load([[
           _format_version: "1.1"
           routes:
           - name: foo
-            path_handling: v1
+            path_handling: v0
             protocols: ["tls"]
             snis:
             - "example.com"
@@ -193,7 +198,7 @@ describe("declarative config: flatten", function()
               snis = { "example.com" },
               sources = null,
               strip_path = true,
-              path_handling = "v1",
+              path_handling = "v0",
               updated_at = 1234567890,
               request_buffering = true,
               response_buffering = true,
@@ -231,6 +236,7 @@ describe("declarative config: flatten", function()
               tls_verify_depth = null,
               tls_verify = null,
               ca_certificates = null,
+              enabled = true,
             }
           }
         }, idempotent(config))
@@ -285,6 +291,7 @@ describe("declarative config: flatten", function()
                 retry_count = 10,
                 timeout = 10000,
                 headers = null,
+                custom_fields_by_lua = null,
               }
             },
             {
@@ -340,7 +347,7 @@ describe("declarative config: flatten", function()
               host: example.com
           routes:
             - name: r1
-              path_handling: v1
+              path_handling: v0
               paths: [/]
               service: svc1
           consumers:
@@ -378,6 +385,7 @@ describe("declarative config: flatten", function()
                 retry_count = 10,
                 timeout = 10000,
                 headers = null,
+                custom_fields_by_lua = null,
               },
               consumer = {
                 id = "UUID"
@@ -436,7 +444,7 @@ describe("declarative config: flatten", function()
               snis = null,
               sources = null,
               strip_path = true,
-              path_handling = "v1",
+              path_handling = "v0",
               updated_at = 1234567890,
               request_buffering = true,
               response_buffering = true,
@@ -461,6 +469,7 @@ describe("declarative config: flatten", function()
               tls_verify_depth = null,
               tls_verify = null,
               ca_certificates = null,
+              enabled = true,
             }
           }
         }, idempotent(config))
@@ -498,6 +507,7 @@ describe("declarative config: flatten", function()
                 tls_verify_depth = null,
                 tls_verify = null,
                 ca_certificates = null,
+                enabled = true,
               }
             }
           }, idempotent(config))
@@ -560,6 +570,7 @@ describe("declarative config: flatten", function()
                   retry_count = 10,
                   timeout = 10000,
                   headers = null,
+                  custom_fields_by_lua = null,
                 },
                 consumer = null,
                 created_at = 1234567890,
@@ -600,7 +611,8 @@ describe("declarative config: flatten", function()
                   port = 10000,
                   timeout = 10000,
                   tls = false,
-                  tls_sni = null
+                  tls_sni = null,
+                  custom_fields_by_lua = null,
                 },
                 consumer = null,
                 created_at = 1234567890,
@@ -632,6 +644,7 @@ describe("declarative config: flatten", function()
                 tls_verify_depth = null,
                 tls_verify = null,
                 ca_certificates = null,
+                enabled = true,
               }, {
                 connect_timeout = 60000,
                 created_at = 1234567890,
@@ -650,6 +663,7 @@ describe("declarative config: flatten", function()
                 tls_verify_depth = null,
                 tls_verify = null,
                 ca_certificates = null,
+                enabled = true,
               } }
           }, idempotent(config))
         end)
@@ -685,6 +699,7 @@ describe("declarative config: flatten", function()
                 tls_verify_depth = null,
                 tls_verify = null,
                 ca_certificates = null,
+                enabled = true,
               }
             }
           }, idempotent(config))
@@ -698,7 +713,7 @@ describe("declarative config: flatten", function()
               host: example.com
               protocol: https
               routes:
-                - path_handling: v1
+                - path_handling: v0
                   paths:
                   - /path
           ]]))
@@ -723,7 +738,7 @@ describe("declarative config: flatten", function()
                 snis = null,
                 sources = null,
                 strip_path = true,
-                path_handling = "v1",
+                path_handling = "v0",
                 tags = null,
                 updated_at = 1234567890,
                 request_buffering = true,
@@ -747,6 +762,7 @@ describe("declarative config: flatten", function()
                 tls_verify_depth = null,
                 tls_verify = null,
                 ca_certificates = null,
+                enabled = true,
               } }
           }, idempotent(config))
         end)
@@ -759,22 +775,22 @@ describe("declarative config: flatten", function()
               host: example.com
               protocol: https
               routes:
-                - path_handling: v1
+                - path_handling: v0
                   paths:
                   - /path
                   name: r1
-                - path_handling: v1
+                - path_handling: v0
                   hosts:
                   - example.com
                   name: r2
-                - path_handling: v1
+                - path_handling: v0
                   methods: ["GET", "POST"]
                   name: r3
             - name: bar
               host: example.test
               port: 3000
               routes:
-                - path_handling: v1
+                - path_handling: v0
                   paths:
                   - /path
                   hosts:
@@ -803,7 +819,7 @@ describe("declarative config: flatten", function()
                 snis = null,
                 sources = null,
                 strip_path = true,
-                path_handling = "v1",
+                path_handling = "v0",
                 tags = null,
                 updated_at = 1234567890,
                 request_buffering = true,
@@ -827,7 +843,7 @@ describe("declarative config: flatten", function()
                 snis = null,
                 sources = null,
                 strip_path = true,
-                path_handling = "v1",
+                path_handling = "v0",
                 tags = null,
                 updated_at = 1234567890,
                 request_buffering = true,
@@ -851,7 +867,7 @@ describe("declarative config: flatten", function()
                 snis = null,
                 sources = null,
                 strip_path = true,
-                path_handling = "v1",
+                path_handling = "v0",
                 tags = null,
                 updated_at = 1234567890,
                 request_buffering = true,
@@ -875,7 +891,7 @@ describe("declarative config: flatten", function()
                 snis = null,
                 sources = null,
                 strip_path = true,
-                path_handling = "v1",
+                path_handling = "v0",
                 tags = null,
                 updated_at = 1234567890,
                 request_buffering = true,
@@ -899,6 +915,7 @@ describe("declarative config: flatten", function()
                 tls_verify_depth = null,
                 tls_verify = null,
                 ca_certificates = null,
+                enabled = true,
               }, {
                 connect_timeout = 60000,
                 created_at = 1234567890,
@@ -917,6 +934,7 @@ describe("declarative config: flatten", function()
                 tls_verify_depth = null,
                 tls_verify = null,
                 ca_certificates = null,
+                enabled = true,
               } }
           }, idempotent(config))
         end)
@@ -932,7 +950,7 @@ describe("declarative config: flatten", function()
               protocol: https
               routes:
               - name: foo
-                path_handling: v1
+                path_handling: v0
                 methods: ["GET"]
                 plugins:
           ]]))
@@ -959,7 +977,7 @@ describe("declarative config: flatten", function()
                 snis = null,
                 sources = null,
                 strip_path = true,
-                path_handling = "v1",
+                path_handling = "v0",
                 updated_at = 1234567890,
                 request_buffering = true,
                 response_buffering = true,
@@ -984,6 +1002,7 @@ describe("declarative config: flatten", function()
                 tls_verify_depth = null,
                 tls_verify = null,
                 ca_certificates = null,
+                enabled = true,
               }
             }
           }, idempotent(config))
@@ -998,7 +1017,7 @@ describe("declarative config: flatten", function()
               protocol: https
               routes:
               - name: foo
-                path_handling: v1
+                path_handling: v0
                 methods: ["GET"]
                 plugins:
                   - name: key-auth
@@ -1010,7 +1029,7 @@ describe("declarative config: flatten", function()
               port: 3000
               routes:
               - name: bar
-                path_handling: v1
+                path_handling: v0
                 paths:
                 - /
                 plugins:
@@ -1049,6 +1068,7 @@ describe("declarative config: flatten", function()
                   retry_count = 10,
                   timeout = 10000,
                   headers = null,
+                  custom_fields_by_lua = null,
                 },
                 consumer = null,
                 created_at = 1234567890,
@@ -1089,7 +1109,8 @@ describe("declarative config: flatten", function()
                   port = 10000,
                   timeout = 10000,
                   tls = false,
-                  tls_sni = null
+                  tls_sni = null,
+                  custom_fields_by_lua = null,
                 },
                 consumer = null,
                 created_at = 1234567890,
@@ -1122,7 +1143,7 @@ describe("declarative config: flatten", function()
                 snis = null,
                 sources = null,
                 strip_path = true,
-                path_handling = "v1",
+                path_handling = "v0",
                 tags = null,
                 updated_at = 1234567890,
                 request_buffering = true,
@@ -1146,7 +1167,7 @@ describe("declarative config: flatten", function()
                 snis = null,
                 sources = null,
                 strip_path = true,
-                path_handling = "v1",
+                path_handling = "v0",
                 tags = null,
                 updated_at = 1234567890,
                 request_buffering = true,
@@ -1170,6 +1191,7 @@ describe("declarative config: flatten", function()
                 tls_verify_depth = null,
                 tls_verify = null,
                 ca_certificates = null,
+                enabled = true,
               }, {
                 connect_timeout = 60000,
                 created_at = 1234567890,
@@ -1188,6 +1210,7 @@ describe("declarative config: flatten", function()
                 tls_verify_depth = null,
                 tls_verify = null,
                 ca_certificates = null,
+                enabled = true,
               } }
           }, idempotent(config))
         end)
@@ -1718,7 +1741,7 @@ describe("declarative config: flatten", function()
           ]]))
 
           config = DeclarativeConfig:flatten(config)
-          assert.same({
+          assert.same(helpers.deep_sort{
             targets = { {
                 created_at = 1234567890,
                 id = "UUID",
@@ -1748,6 +1771,10 @@ describe("declarative config: flatten", function()
                 hash_on_cookie = null,
                 hash_on_cookie_path = "/",
                 hash_on_header = null,
+                hash_on_query_arg = null,
+                hash_fallback_query_arg = null,
+                hash_on_uri_capture = null,
+                hash_fallback_uri_capture = null,
                 healthchecks = {
                   active = {
                     concurrency = 10,
@@ -1759,6 +1786,7 @@ describe("declarative config: flatten", function()
                     http_path = "/",
                     https_sni = null,
                     https_verify_certificate = true,
+                    headers = null,
                     timeout = 1,
                     type = "http",
                     unhealthy = {
@@ -1799,6 +1827,10 @@ describe("declarative config: flatten", function()
                 hash_on_cookie = null,
                 hash_on_cookie_path = "/",
                 hash_on_header = null,
+                hash_on_query_arg = null,
+                hash_fallback_query_arg = null,
+                hash_on_uri_capture = null,
+                hash_fallback_uri_capture = null,
                 healthchecks = {
                   active = {
                     concurrency = 10,
@@ -1810,6 +1842,7 @@ describe("declarative config: flatten", function()
                     http_path = "/",
                     https_sni = null,
                     https_verify_certificate = true,
+                    headers = null,
                     timeout = 1,
                     type = "http",
                     unhealthy = {
@@ -2119,6 +2152,69 @@ describe("declarative config: flatten", function()
       ]]))
       local _, err = DeclarativeConfig:flatten(config)
       assert.equal(nil, err)
+    end)
+    it("fixes #7696 - incorrect foreign reference type produce useful error message", function()
+      local config = assert(lyaml.load([[
+        _format_version: "2.1"
+
+        services:
+        - name: my-service-1
+          url: http://localhost:8001/status
+          routes:
+          - name: my-route-1
+            service:
+              id: "769bdf51-16df-5476-9830-ef26800b5448"
+            paths:
+            - /status
+      ]]))
+      local _, err = DeclarativeConfig:flatten(config)
+      assert.same({
+        routes = {
+          ["my-route-1"] = { "invalid reference 'service: {\"id\":\"769bdf51-16df-5476-9830-ef26800b5448\"}' (no such entry in 'services')" }
+        }
+      }, err)
+    end)
+    it("fixes #7620 - yaml anchors work as expected", function()
+      local config = assert(lyaml.load([[
+        _format_version: "1.1"
+        services:
+          - name: service1
+            url: http://example.com
+            plugins:
+              - &correlation-plugin
+                name: correlation-id
+                config:
+                  header_name: X-Request-Id
+                  generator: uuid
+                  echo_downstream: true
+              - &rate-limiting-plugin
+                name: rate-limiting
+                config:
+                  second: 5
+                  policy: local
+            routes:
+              - name: foo
+                strip_path: false
+                paths:
+                  - /foo
+          - name: service2
+            url: http://example.com
+            plugins:
+              - *correlation-plugin
+              - *rate-limiting-plugin
+            routes:
+              - name: bar
+                strip_path: false
+                paths:
+                  - /bar
+      ]]))
+      local config, err = DeclarativeConfig:flatten(config)
+      assert.equal(nil, err)
+      local count = 0
+      for _, _ in pairs(config.plugins) do
+        count = count + 1
+      end
+      assert.equal(4, count)
     end)
   end)
 end)

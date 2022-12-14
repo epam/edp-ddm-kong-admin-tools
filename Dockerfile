@@ -7,9 +7,9 @@ ENV ASSET $ASSET
 
 ARG EE_PORTS
 
-COPY kong-build-tools/output/kong-2.3.3.amd64.apk.tar.gz /tmp/kong.tar.gz
+COPY kong-build-tools/output/kong-3.0.1.amd64.apk.tar.gz /tmp/kong.tar.gz
 
-ARG KONG_VERSION=2.3.3
+ARG KONG_VERSION=3.0.1
 ENV KONG_VERSION $KONG_VERSION
 
 

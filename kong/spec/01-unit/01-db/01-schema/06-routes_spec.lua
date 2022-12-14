@@ -227,7 +227,7 @@ describe("routes schema", function()
 
       local ok, err = Routes:validate(route)
       assert.falsy(ok)
-      assert.equal("should start with: /", err.paths[1])
+      assert.equal("should start with: / (fixed path) or ~/ (regex path)", err.paths[1])
     end)
 
     it("must not have empty segments (/foo//bar)", function()
@@ -251,7 +251,7 @@ describe("routes schema", function()
       local u = require("spec.helpers").unindent
 
       local invalid_paths = {
-        [[/users/(foo/profile]],
+        [[~/users/(foo/profile]],
       }
 
       for i = 1, #invalid_paths do
@@ -383,7 +383,6 @@ describe("routes schema", function()
       local invalid_hosts = {
         "/example",
         ".example",
-        "example.",
         "example:",
         "mock;bin",
         "example.com/org",
@@ -795,7 +794,7 @@ describe("routes schema", function()
         local ok, errs = Routes:validate(route)
         assert.falsy(ok)
         assert.same({
-          paths = "cannot set 'paths' when 'protocols' is 'tcp', 'tls' or 'udp'",
+          paths = "cannot set 'paths' when 'protocols' is 'tcp', 'tls', 'tls_passthrough' or 'udp'",
         }, errs)
       end
     end)
@@ -812,7 +811,7 @@ describe("routes schema", function()
         local ok, errs = Routes:validate(route)
         assert.falsy(ok)
         assert.same({
-          methods = "cannot set 'methods' when 'protocols' is 'tcp', 'tls' or 'udp'",
+          methods = "cannot set 'methods' when 'protocols' is 'tcp', 'tls', 'tls_passthrough' or 'udp'",
         }, errs)
       end
     end)
@@ -1011,7 +1010,7 @@ describe("routes schema", function()
         end
       end)
 
-      it("rejects specifying 'snis' if 'protocols' does not have 'https' or 'tls'", function()
+      it("rejects specifying 'snis' if 'protocols' does not have 'https', 'tls' or 'tls_passthrough'", function()
         local route = Routes:process_auto_fields({
           protocols = { "tcp", "udp" },
           snis = { "example.org" },
@@ -1021,7 +1020,7 @@ describe("routes schema", function()
         assert.falsy(ok)
         assert.same({
           ["@entity"] = {
-            "'snis' can only be set when 'protocols' is 'grpcs', 'https' or 'tls'",
+            "'snis' can only be set when 'protocols' is 'grpcs', 'https', 'tls' or 'tls_passthrough'",
           },
           snis = "length must be 0",
         }, errs)
@@ -1178,6 +1177,34 @@ describe("routes schema", function()
     assert.falsy(ok)
     assert.same({
       strip_path = "cannot set 'strip_path' when 'protocols' is 'grpc' or 'grpcs'"
+    }, errs)
+  end)
+
+  it("errors if tls and tls_passthrough set on a same route", function()
+    local s = { id = "a4fbd24e-6a52-4937-bd78-2536713072d2" }
+    local route = Routes:process_auto_fields({
+      snis = { "foo.grpc.com" },
+      protocols = { "tls", "tls_passthrough" },
+      service = s,
+    }, "insert")
+    local ok, errs = Routes:validate(route)
+    assert.falsy(ok)
+    assert.same({
+      protocols = "these sets are mutually exclusive: ('tcp', 'tls', 'udp'), ('tls_passthrough')",
+    }, errs)
+  end)
+
+  it("errors if snis is not set on tls_pasthrough", function()
+    local s = { id = "a4fbd24e-6a52-4937-bd78-2536713072d2" }
+    local route = Routes:process_auto_fields({
+      sources = {{ ip = "127.0.0.1" }},
+      protocols = { "tls_passthrough" },
+      service = s,
+    }, "insert")
+    local ok, errs = Routes:validate(route)
+    assert.falsy(ok)
+    assert.same({
+      ["@entity"] =  { "must set snis when 'protocols' is 'tls_passthrough'" },
     }, errs)
   end)
 end)

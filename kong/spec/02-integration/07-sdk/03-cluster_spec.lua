@@ -1,6 +1,6 @@
 local helpers = require("spec.helpers")
 
-local uuid_pattern = "^" .. ("%x"):rep(11) .. "%-" .. ("%x"):rep(4) .. "%-"
+local uuid_pattern = "^" .. ("%x"):rep(8) .. "%-" .. ("%x"):rep(4) .. "%-"
                          .. ("%x"):rep(4) .. "%-" .. ("%x"):rep(4) .. "%-"
                          .. ("%x"):rep(12) .. "$"
 local fixtures_dp = {
@@ -14,7 +14,7 @@ fixtures_dp.http_mock.my_server_block = [[
 
       location = "/hello" {
         content_by_lua_block {
-          ngx.say(200, kong.cluster.get_id())
+          ngx.print(kong.cluster.get_id())
         }
       }
   }
@@ -32,14 +32,14 @@ fixtures_cp.http_mock.my_server_block = [[
 
       location = "/hello" {
         content_by_lua_block {
-          ngx.say(200, kong.cluster.get_id())
+          ngx.print(kong.cluster.get_id())
         }
       }
   }
 ]]
 
 for _, strategy in helpers.each_strategy() do
-  describe("SDK: kong.cluster for #" .. strategy, function()
+  describe("PDK: kong.cluster for #" .. strategy, function()
     local proxy_client
 
     lazy_setup(function()
@@ -55,7 +55,6 @@ for _, strategy in helpers.each_strategy() do
         role = "control_plane",
         cluster_cert = "spec/fixtures/kong_clustering.crt",
         cluster_cert_key = "spec/fixtures/kong_clustering.key",
-        lua_ssl_trusted_certificate = "spec/fixtures/kong_clustering.crt",
         database = strategy,
         db_update_frequency = 0.1,
         cluster_listen = "127.0.0.1:9005",
@@ -68,7 +67,6 @@ for _, strategy in helpers.each_strategy() do
         prefix = "servroot2",
         cluster_cert = "spec/fixtures/kong_clustering.crt",
         cluster_cert_key = "spec/fixtures/kong_clustering.key",
-        lua_ssl_trusted_certificate = "spec/fixtures/kong_clustering.crt",
         cluster_control_plane = "127.0.0.1:9005",
         proxy_listen = "0.0.0.0:9002",
         nginx_conf = "spec/fixtures/custom_nginx.template",

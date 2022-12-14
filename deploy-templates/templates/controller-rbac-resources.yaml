@@ -71,6 +71,7 @@ rules:
       - "networking.internal.knative.dev"
     resources:
       - ingresses
+      - ingressclasses
     verbs:
       - get
       - list
@@ -94,6 +95,7 @@ rules:
       - "configuration.konghq.com"
     resources:
       - tcpingresses/status
+      - udpingresses/status
     verbs:
       - update
   - apiGroups:
@@ -105,6 +107,8 @@ rules:
       - kongconsumers
       - kongingresses
       - tcpingresses
+      - udpingresses
+      - ingressclassparameterses
     verbs:
       - get
       - list

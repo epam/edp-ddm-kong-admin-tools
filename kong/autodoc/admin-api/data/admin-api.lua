@@ -31,6 +31,7 @@ return {
       "snis",
       "upstreams",
       "targets",
+      "vaults",
     },
     nodoc_entities = {
     },
@@ -43,15 +44,7 @@ return {
   intro = {
     {
       text = [[
-        <div class="alert alert-info.blue" role="alert">
-          This page refers to the Admin API for running Kong configured with a
-          database (Postgres or Cassandra). For using the Admin API for Kong
-          in DB-less mode, please refer to the
-          <a href="/{{page.kong_version}}/db-less-admin-api">Admin API for DB-less Mode</a>
-          page.
-        </div>
-
-        Kong comes with an **internal** RESTful Admin API for administration purposes.
+       {{site.base_gateway}} comes with an **internal** RESTful Admin API for administration purposes.
         Requests to the Admin API can be sent to any node in the cluster, and Kong will
         keep the configuration consistent across all nodes.
 
@@ -63,8 +56,95 @@ return {
         exposure of this API. See [this document][secure-admin-api] for a discussion
         of methods to secure the Admin API.
       ]]
-    }, {
-      title = [[Supported Content Types]],
+    },
+
+    { title = [[DB-less mode]],
+      text = [[
+
+        In [DB-less mode](../reference/db-less-and-declarative-config), the Admin API can be used to load a new declarative
+        configuration, and for inspecting the current configuration. In DB-less mode,
+        the Admin API for each Kong node functions independently, reflecting the memory state
+        of that particular Kong node. This is the case because there is no database
+        coordination between Kong nodes.
+
+        In DB-less mode, you configure {{site.base_gateway}} declaratively.
+        Therefore, the Admin API is mostly read-only. The only tasks it can perform are all
+        related to handling the declarative config, including:
+
+        * [Validating configurations against schemas](#validate-a-configuration-against-a-schema)
+        * [Validating plugin configurations against schemas](#validate-a-plugin-configuration-against-the-schema)
+        * [Reloading the declarative configuration](#reload-declarative-configuration)
+        * [Setting a target's health status in the load balancer](#set-target-as-healthy)
+
+      ]],
+    },
+
+    { title = [[Declarative configuration]],
+      text = [[
+
+        Loading the declarative configuration of entities into {{site.base_gateway}}
+        can be done in two ways: at start-up, through the `declarative_config`
+        property, or at run-time, through the Admin API using the `/config`
+        endpoint.
+
+        To get started using declarative configuration, you need a file
+        (in YAML or JSON format) containing entity definitions. You can
+        generate a sample declarative configuration with the command:
+
+        ```
+        kong config init
+        ```
+
+        It generates a file named `kong.yml` in the current directory,
+        containing the appropriate structure and examples.
+
+
+        ### Reload Declarative Configuration
+
+        This endpoint allows resetting a DB-less Kong with a new
+        declarative configuration data file. All previous contents
+        are erased from memory, and the entities specified in the
+        given file take their place.
+
+        To learn more about the file format, see the
+        [declarative configuration](../reference/db-less-and-declarative-config) documentation.
+
+
+        <div class="endpoint post indent">/config</div>
+
+        {:.indent}
+        Attributes | Description
+        ---:| ---
+        `config`<br>**required** | The config data (in YAML or JSON format) to be loaded.
+
+
+        #### Request Querystring Parameters
+
+        Attributes | Description
+        ---:| ---
+        `check_hash`<br>*optional* | If set to 1, Kong will compare the hash of the input config data against that of the previous one. If the configuration is identical, it will not reload it and will return HTTP 304.
+
+
+        #### Response
+
+        ```
+        HTTP 200 OK
+        ```
+
+        ``` json
+        {
+            { "services": [],
+              "routes": []
+            }
+        }
+        ```
+
+        The response contains a list of all the entities that were parsed from the
+        input file.
+      ]],
+    },
+
+    { title = [[Supported Content Types]],
       text = [[
         The Admin API accepts 3 content types on every endpoint:
 
@@ -150,13 +230,12 @@ return {
   },
 
   footer = [[
-    [clustering]: /{{page.kong_version}}/clustering
-    [cli]: /{{page.kong_version}}/cli
-    [active]: /{{page.kong_version}}/health-checks-circuit-breakers/#active-health-checks
-    [healthchecks]: /{{page.kong_version}}/health-checks-circuit-breakers
-    [secure-admin-api]: /{{page.kong_version}}/secure-admin-api
-    [proxy-reference]: /{{page.kong_version}}/proxy
-    [db-less-admin-api]: /{{page.kong_version}}/db-less-admin-api
+    [clustering]: /gateway/{{page.kong_version}}/reference/clustering
+    [cli]: /gateway/{{page.kong_version}}/reference/cli
+    [active]: /gateway/{{page.kong_version}}/reference/health-checks-circuit-breakers/#active-health-checks
+    [healthchecks]: /gateway/{{page.kong_version}}/reference/health-checks-circuit-breakers
+    [secure-admin-api]: /gateway/{{page.kong_version}}/admin-api/secure-admin-api
+    [proxy-reference]: /gateway/{{page.kong_version}}/reference/proxy
   ]],
 
   general = {
@@ -186,7 +265,7 @@ return {
                         ...
                     ]
                 },
-                "configuration" : {
+                "configuration": {
                     ...
                 },
                 "tagline": "Welcome to Kong",
@@ -231,6 +310,42 @@ return {
                     "..."
                 ]
             }
+            ```
+          ]],
+        },
+      },
+      ["/[any endpoint]"] = {
+        HEAD = {
+          title = [[Check endpoint or entity existence]],
+          endpoint = [[<div class="endpoint head">/&lt;any-endpoint&gt;</div>]],
+          description = [[Similar to `HTTP GET`, but does not return the body. Returns `HTTP 200` when the endpoint exits or `HTTP 404` when it does not. Other status codes are possible.]],
+          response =[[
+            ```
+            HTTP 200 OK
+            ```
+
+            ```http
+            Access-Control-Allow-Origin: *
+            Content-Length: 11389
+            Content-Type: application/json; charset=utf-8
+            X-Kong-Admin-Latency: 1
+            ```
+          ]],
+        },
+        OPTIONS = {
+          title = [[List HTTP methods by endpoint]],
+          endpoint = [[<div class="endpoint options">/&lt;any-endpoint&gt;</div>]],
+          description = [[List all the supported `HTTP` methods by an endpoint. This can also be used with a `CORS` preflight request.]],
+          response =[[
+            ```
+            HTTP 204 No Content
+            ```
+
+            ```http
+            Access-Control-Allow-Headers: Content-Type
+            Access-Control-Allow-Methods: GET, HEAD, OPTIONS
+            Access-Control-Allow-Origin: *
+            Allow: GET, HEAD, OPTIONS
             ```
           ]],
         },
@@ -334,6 +449,111 @@ return {
           ]],
         },
       },
+      ["/schemas/plugins/validate"] = {
+        POST = {
+          title = [[Validate a plugin configuration against the schema]],
+          endpoint = [[<div class="endpoint post">/schemas/plugins/validate</div>]],
+          description = [[
+            Check validity of a plugin configuration against the plugins entity schema.
+            This allows you to test your input before submitting a request
+            to the entity endpoints of the Admin API.
+
+            Note that this only performs the schema validation checks,
+            checking that the input configuration is well-formed.
+            A requests to the entity endpoint using the given configuration
+            may still fail due to other reasons, such as invalid foreign
+            key relationships or uniqueness check failures against the
+            contents of the data store.
+          ]],
+          response = [[
+            ```
+            HTTP 200 OK
+            ```
+
+            ```json
+            {
+                "message": "schema validation successful"
+            }
+            ```
+          ]],
+        },
+      },
+      ["/timers"] = {
+        GET = {
+          title = [[Retrieve runtime debugging info of Kong's timers]],
+          endpoint = [[<div class="endpoint post">/timers</div>]],
+          description = [[
+            Retrieve runtime stats data from [lua-resty-timer-ng](https://github.com/Kong/lua-resty-timer-ng).
+          ]],
+          response = [[
+            ```
+            HTTP 200 OK
+            ```
+
+            ```json
+            {   "worker": {
+                  "id": 0,
+                  "count": 4,
+                },
+                "stats": {
+                  "flamegraph": {
+                    "running": "@./kong/init.lua:706:init_worker();@./kong/runloop/handler.lua:1086:before() 0\n",
+                    "elapsed_time": "@./kong/init.lua:706:init_worker();@./kong/runloop/handler.lua:1086:before() 17\n",
+                    "pending": "@./kong/init.lua:706:init_worker();@./kong/runloop/handler.lua:1086:before() 0\n"
+                  },
+                  "sys": {
+                      "running": 0,
+                      "runs": 7,
+                      "pending": 0,
+                      "waiting": 7,
+                      "total": 7
+                  },
+                  "timers": {
+                      "healthcheck-localhost:8080": {
+                          "name": "healthcheck-localhost:8080",
+                          "meta": {
+                              "name": "@/build/luarocks/share/lua/5.1/resty/counter.lua:71:new()",
+                              "callstack": "@./kong/plugins/prometheus/prometheus.lua:673:init_worker();@/build/luarocks/share/lua/5.1/resty/counter.lua:71:new()"
+                          },
+                          "stats": {
+                              "finish": 2,
+                              "runs": 2,
+                              "elapsed_time": {
+                                  "min": 0,
+                                  "max": 0,
+                                  "avg": 0,
+                                  "variance": 0
+                              },
+                              "last_err_msg": ""
+                          }
+                      }
+                  }
+                }
+            }
+            ```
+            * `worker`:
+              * `id`: The ordinal number of the current Nginx worker processes (starting from number 0).
+              * `count`: The total number of the Nginx worker processes.
+            * `stats.flamegraph`: String-encoded timer-related flamegraph data.
+              You can use [brendangregg/FlameGraph](https://github.com/brendangregg/FlameGraph) to generate flamegraph svgs.
+            * `stats.sys`: List the number of different type of timers.
+              * `running`: number of running timers.
+              * `pending`: number of pending timers.
+              * `waiting`: number of unexpired timers.
+              * `total`: running + pending + waiting.
+            * `timers.meta`: Program callstack of created timers.
+              * `name`: An automatically generated string that stores the location where the creation timer was created.
+              * `callstack`: Lua call stack string showing where this timer was created.
+            * `timers.stats.elapsed_time`: An object that stores the maximum, minimum, average and variance
+              of the time spent on each run of the timer (second).
+            * `timers.stats.runs`: Total number of runs.
+            * `timers.stats.finish`: Total number of successful runs.
+
+            Note: `flamegraph`, `timers.meta` and `timers.stats.elapsed_time` keys are only available when Kong's `log_level` config is set to `debug`.
+            Read the [doc of lua-resty-timer-ng](https://github.com/Kong/lua-resty-timer-ng#stats) for more details.
+          ]],
+        },
+      },
     },
     health = {
       title = [[Health routes]],
@@ -387,7 +607,8 @@ return {
                     "connections_reading": 0,
                     "connections_writing": 1,
                     "connections_waiting": 0
-                }
+                },
+                "configuration_hash": "779742c3d7afee2e38f977044d2ed96b"
             }
             ```
 
@@ -438,6 +659,10 @@ return {
                 * `reachable`: A boolean value reflecting the state of the
                   database connection. Please note that this flag **does not**
                   reflect the health of the database itself.
+            * `configuration_hash`: The hash of the current configuration. This
+              field is only returned when the Kong node is running in DB-less
+              or data-plane mode. The special return value "00000000000000000000000000000000"
+              means Kong does not currently have a valid configuration loaded.
           ]],
         },
       }
@@ -451,8 +676,12 @@ return {
     tags = {
       title = [[ Tags ]],
       description = [[
-        Tags are strings associated to entities in Kong. Each tag must be composed of one or more
-        alphanumeric characters, `_`, `-`, `.` or `~`.
+        Tags are strings associated to entities in Kong.
+
+        Tags can contain almost all UTF-8 characters, with the following exceptions:
+
+        - `,` and `/` are reserved for filtering tags with "and" and "or", so they are not allowed in tags.
+        - Non-printable ASCII (for example, the space character) is not allowed.
 
         Most core entities can be *tagged* via their `tags` attribute, upon creation or edition.
 
@@ -619,7 +848,7 @@ return {
           ]]
         },
         host = {
-          description = [[The host of the upstream server.]],
+          description = [[The host of the upstream server. Note that the host value is case sensitive.]],
           example = "example.com",
         },
         port = {
@@ -670,6 +899,12 @@ return {
           description = [[
             Maximum depth of chain while verifying Upstream server's TLS certificate.
             If set to `null`, then the Nginx default is respected.
+          ]],
+        },
+        enabled = {
+          description = [[
+            Whether the Service is active. If set to `false`, the proxy behavior
+            will be as if any routes attached to it do not exist (404). Default: `true`.
           ]],
         },
         ca_certificates = {
@@ -728,12 +963,22 @@ return {
         * For `https`, at least one of `methods`, `hosts`, `headers`, `paths` or `snis`;
         * For `tcp`, at least one of `sources` or `destinations`;
         * For `tls`, at least one of `sources`, `destinations` or `snis`;
+        * For `tls_passthrough`, set `snis`;
         * For `grpc`, at least one of `hosts`, `headers` or `paths`;
         * For `grpcs`, at least one of `hosts`, `headers`, `paths` or `snis`.
 
+        A route can't have both `tls` and `tls_passthrough` protocols at same time.
+
         #### Path handling algorithms
 
-        `"v0"` is the behavior used in Kong 0.x and 2.x. It treats `service.path`, `route.path` and request path as
+        {:.note}
+        > **Note**: Path handling algorithms v1 was deprecated in Kong 3.0. From Kong 3.0, when `router_flavor`
+        > is set to `expressions`, `route.path_handling` will be unconfigurable and the path handling behavior
+        > will be `"v0"`; when `router_flavor` is set to `traditional_compatible`, the path handling behavior
+        > will be `"v0"` regardless of the value of `route.path_handling`. Only `router_flavor` = `traditional`
+        > will support path_handling `"v1'` behavior.
+
+        `"v0"` is the behavior used in Kong 0.x, 2.x and 3.x. It treats `service.path`, `route.path` and request path as
         *segments* of a URL. It will always join them via slashes. Given a service path `/s`, route path `/r`
         and request path `/re`, the concatenated path will be `/s/re`. If the resulting path is a single slash,
         no further transformation is done to it. If it's longer, then the trailing slash is removed.
@@ -745,18 +990,26 @@ return {
         Both versions of the algorithm detect "double slashes" when combining paths, replacing them by single
         slashes.
 
-        In the following table, `s` is the Service and `r` is the Route.
+        The following table shows the possible combinations of path handling version, strip path, and request:
 
-        | `s.path` | `r.path` | `r.strip_path` | `r.path_handling` | request path | proxied path  |
-        |----------|----------|----------------|-------------------|--------------|---------------|
-        | `/s`     | `/fv0`   | `false`        | `v0`              | `/fv0req`    | `/s/fv0req`   |
-        | `/s`     | `/fv1`   | `false`        | `v1`              | `/fv1req`    | `/sfv1req`    |
-        | `/s`     | `/tv0`   | `true`         | `v0`              | `/tv0req`    | `/s/req`      |
-        | `/s`     | `/tv1`   | `true`         | `v1`              | `/tv1req`    | `/sreq`       |
-        | `/s`     | `/fv0/`  | `false`        | `v0`              | `/fv0/req`   | `/s/fv0/req`  |
-        | `/s`     | `/fv1/`  | `false`        | `v1`              | `/fv1/req`   | `/sfv1/req`   |
-        | `/s`     | `/tv0/`  | `true`         | `v0`              | `/tv0/req`   | `/s/req`      |
-        | `/s`     | `/tv1/`  | `true`         | `v1`              | `/tv1/req`   | `/sreq`       |
+        | `service.path` | `route.path` | `request` |`route.strip_path` | `route.path_handling` | request path | upstream path |
+        |----------------|--------------|-----------|-------------------|-----------------------|--------------|---------------|
+        | `/s`           | `/fv0`       | `req`     | `false`           | `v0`                  |  `/fv0/req`  | `/s/fv0/req`  |
+        | `/s`           | `/fv0`       | `blank`   | `false`           | `v0`                  |  `/fv0`      | `/s/fv0`      |
+        | `/s`           | `/fv1`       | `req`     | `false`           | `v1`                  |  `/fv1/req`  | `/sfv1/req`   |
+        | `/s`           | `/fv1`       | `blank`   | `false`           | `v1`                  |  `/fv1`      | `/sfv1`       |
+        | `/s`           | `/tv0`       | `req`     | `true`            | `v0`                  |  `/tv0/req`  | `/s/req`      |
+        | `/s`           | `/tv0`       | `blank`   | `true`            | `v0`                  |  `/tv0`      | `/s`          |
+        | `/s`           | `/tv1`       | `req`     | `true`            | `v1`                  |  `/tv1/req`  | `/s/req`      |
+        | `/s`           | `/tv1`       | `blank`   | `true`            | `v1`                  |  `/tv1`      | `/s`          |
+        | `/s`           | `/fv0/`      | `req`     | `false`           | `v0`                  |  `/fv0/req`  | `/s/fv0/req`  |
+        | `/s`           | `/fv0/`      | `blank`   | `false`           | `v0`                  |  `/fv0/`     | `/s/fv01/`    |
+        | `/s`           | `/fv1/`      | `req`     | `false`           | `v1`                  |  `/fv1/req`  | `/sfv1/req`   |
+        | `/s`           | `/fv1/`      | `blank`   | `false`           | `v1`                  |  `/fv1/`     | `/sfv1/`      |
+        | `/s`           | `/tv0/`      | `req`     | `true`            | `v0`                  |  `/tv0/req`  | `/s/req`      |
+        | `/s`           | `/tv0/`      | `blank`   | `true`            | `v0`                  |  `/tv0/`     | `/s/`         |
+        | `/s`           | `/tv1/`      | `req`     | `true`            | `v1`                  |  `/tv1/req`  | `/sreq`       |
+        | `/s`           | `/tv1/`      | `blank`   | `true`            | `v1`                  |  `/tv1/`     | `/s`          |
 
       ]],
       fields = {
@@ -764,7 +1017,9 @@ return {
         created_at = { skip = true },
         updated_at = { skip = true },
         name = {
-          description = [[The name of the Route.]]
+          description = [[The name of the Route. Route names must be unique, and they are
+          case sensitive. For example, there can be two different Routes named "test" and
+          "Test".]]
         },
         regex_priority = {
           description = [[
@@ -777,8 +1032,9 @@ return {
         },
         protocols = {
           description = [[
-            A list of the protocols this Route should allow. When set to `["https"]`,
-            HTTP requests are answered with a request to upgrade to HTTPS.
+            An array of the protocols this Route should allow. See the [Route Object](#route-object) section for a list of accepted protocols.
+
+            When set to only `"https"`, HTTP requests are answered with an upgrade error. When set to only `"http"`, HTTPS requests are answered with an error.
           ]],
           examples = {
             {"http", "https"},
@@ -796,7 +1052,7 @@ return {
         hosts = {
           kind = "semi-optional",
           description = [[
-            A list of domain names that match this Route.
+            A list of domain names that match this Route. Note that the hosts value is case sensitive.
           ]],
           examples = { {"example.com", "foo.test"}, nil },
           skip_in_example = true, -- hack so we get HTTP fields in the first example and Stream fields in the second
@@ -816,6 +1072,8 @@ return {
             match if present in the request.
             The `Host` header cannot be used with this attribute: hosts should be specified
             using the `hosts` attribute.
+            When `headers` contains only one value and that value starts with
+            the special prefix `~*`, the value is interpreted as a regular expression.
           ]],
           examples = { { ["x-my-header"] = {"foo", "bar"}, ["x-another-header"] = {"bla"} }, nil },
           skip_in_example = true, -- hack so we get HTTP fields in the first example and Stream fields in the second
@@ -845,6 +1103,14 @@ return {
           ]],
           examples = { nil, {{ip = "10.1.0.0/16", port = 1234}, {ip = "10.2.2.2"}, {port = 9123}} },
           skip_in_example = true, -- hack so we get HTTP fields in the first example and Stream fields in the second
+        },
+        expression = {
+          kind = "semi-optional",
+          description = [[
+            Use Router Expression to perform route match. This option is only available when `router_flavor` is set
+            to `expressions`.
+          ]],
+          example = "http.path ^= \"/hello\" && net.protocol == \"http\"",
         },
         strip_path = {
           description = [[
@@ -1059,6 +1325,11 @@ return {
       -- While these endpoints actually support DELETE (deleting the entity and
       -- cascade-deleting the plugin), we do not document them, as this operation
       -- is somewhat odd.
+      ["/routes/:routes/service"] = {
+        DELETE = {
+             endpoint = false,
+        }
+      },
       ["/plugins/:plugins/route"] = {
         DELETE = {
           endpoint = false,
@@ -1160,11 +1431,23 @@ return {
         id = { skip = true },
         created_at = { skip = true },
         cert = {
-          description = [[PEM-encoded public certificate chain of the SSL key pair.]],
+          description = [[
+            PEM-encoded public certificate chain of the SSL key pair.
+
+            This field is _referenceable_, which means it can be securely stored as a
+            [secret](/gateway/latest/plan-and-deploy/security/secrets-management/getting-started)
+            in a vault. References must follow a [specific format](/gateway/latest/plan-and-deploy/security/secrets-management/reference-format).
+          ]],
           example = "-----BEGIN CERTIFICATE-----...",
         },
         key = {
-          description = [[PEM-encoded private key of the SSL key pair.]],
+          description = [[
+            PEM-encoded private key of the SSL key pair.
+
+            This field is _referenceable_, which means it can be securely stored as a
+            [secret](/gateway/latest/plan-and-deploy/security/secrets-management/getting-started)
+            in a vault. References must follow a [specific format](/gateway/latest/plan-and-deploy/security/secrets-management/reference-format).
+          ]],
           example = "-----BEGIN RSA PRIVATE KEY-----..."
         },
         cert_alt = {
@@ -1173,6 +1456,10 @@ return {
             This should only be set if you have both RSA and ECDSA types of
             certificate available and would like Kong to prefer serving using
             ECDSA certs when client advertises support for it.
+
+            This field is _referenceable_, which means it can be securely stored as a
+            [secret](/gateway/latest/plan-and-deploy/security/secrets-management/getting-started)
+            in a vault. References must follow a [specific format](/gateway/latest/plan-and-deploy/security/secrets-management/reference-format).
           ]],
           example = "-----BEGIN CERTIFICATE-----...",
         },
@@ -1181,6 +1468,10 @@ return {
             This should only be set if you have both RSA and ECDSA types of
             certificate available and would like Kong to prefer serving using
             ECDSA certs when client advertises support for it.
+
+            This field is _referenceable_, which means it can be securely stored as a
+            [secret](/gateway/latest/plan-and-deploy/security/secrets-management/getting-started)
+            in a vault. References must follow a [specific format](/gateway/latest/plan-and-deploy/security/secrets-management/reference-format).
           ]],
           example = "-----BEGIN EC PRIVATE KEY-----..."
         },
@@ -1388,7 +1679,7 @@ return {
         id = { skip = true },
         created_at = { skip = true },
         ["name"] = { description = [[This is a hostname, which must be equal to the `host` of a Service.]] },
-        ["slots"] = { description = [[The number of slots in the loadbalancer algorithm (`10`-`65536`).]] },
+        ["slots"] = { description = [[The number of slots in the load balancer algorithm. If `algorithm` is set to `round-robin`, this setting determines the maximum number of slots. If `algorithm` is set to `consistent-hashing`, this setting determines the actual number of slots in the algorithm. Accepts an integer in the range `10`-`65536`.]] },
         ["algorithm"] = { description = [[Which load balancing algorithm to use.]] },
         ["hash_on"] = { description = [[What to use as hashing input. Using `none` results in a weighted-round-robin scheme with no hashing.]] },
         ["hash_fallback"] = { description = [[What to use as hashing input if the primary `hash_on` does not return a hash (eg. header is missing, or no Consumer identified). Not available if `hash_on` is set to `cookie`.]] },
@@ -1396,6 +1687,10 @@ return {
         ["hash_fallback_header"] = { kind = "semi-optional", skip_in_example = true, description = [[The header name to take the value from as hash input. Only required when `hash_fallback` is set to `header`.]] },
         ["hash_on_cookie"] = { kind = "semi-optional", skip_in_example = true, description = [[The cookie name to take the value from as hash input. Only required when `hash_on` or `hash_fallback` is set to `cookie`. If the specified cookie is not in the request, Kong will generate a value and set the cookie in the response.]] },
         ["hash_on_cookie_path"] = { kind = "semi-optional", skip_in_example = true, description = [[The cookie path to set in the response headers. Only required when `hash_on` or `hash_fallback` is set to `cookie`.]] },
+        ["hash_on_query_arg"] = { kind = "semi-optional", skip_in_example = true, description = [[The name of the query string argument to take the value from as hash input. Only required when `hash_on` is set to `query_arg`.]] },
+        ["hash_fallback_query_arg"] = { kind = "semi-optional", skip_in_example = true, description = [[The name of the query string argument to take the value from as hash input. Only required when `hash_fallback` is set to `query_arg`.]] },
+        ["hash_on_uri_capture"] = { kind = "semi-optional", skip_in_example = true, description = [[The name of the route URI capture to take the value from as hash input. Only required when `hash_on` is set to `uri_capture`.]] },
+        ["hash_fallback_uri_capture"] = { kind = "semi-optional", skip_in_example = true, description = [[The name of the route URI capture to take the value from as hash input. Only required when `hash_fallback` is set to `uri_capture`.]] },
         ["host_header"] = { description = [[The hostname to be used as `Host` header when proxying requests through Kong.]], example = "example.com", },
         ["client_certificate"] = { description = [[If set, the certificate to be used as client certificate while TLS handshaking to the upstream server.]] },
         ["healthchecks.active.timeout"] = { description = [[Socket timeout for active health checks (in seconds).]] },
@@ -1404,6 +1699,7 @@ return {
         ["healthchecks.active.http_path"] = { description = [[Path to use in GET HTTP request to run as a probe on active health checks.]] },
         ["healthchecks.active.https_verify_certificate"] = { description = [[Whether to check the validity of the SSL certificate of the remote host when performing active health checks using HTTPS.]] },
         ["healthchecks.active.https_sni"] = { description = [[The hostname to use as an SNI (Server Name Identification) when performing active health checks using HTTPS. This is particularly useful when Targets are configured using IPs, so that the target host's certificate can be verified with the proper SNI.]], example = "example.com", },
+        ["healthchecks.active.headers"] = { description = [[One or more lists of values indexed by header name to use in GET HTTP request to run as a probe on active health checks. Values must be pre-formatted.]], example = { { ["x-my-header"] = {"foo", "bar"}, ["x-another-header"] = {"bla"} }, nil }, },
         ["healthchecks.active.healthy.interval"] = { description = [[Interval between active health checks for healthy targets (in seconds). A value of zero indicates that active probes for healthy targets should not be performed.]] },
         ["healthchecks.active.healthy.http_statuses"] = { description = [[An array of HTTP statuses to consider a success, indicating healthiness, when returned by a probe in active health checks.]] },
         ["healthchecks.active.healthy.successes"] = { description = [[Number of successes in active probes (as defined by `healthchecks.active.healthy.http_statuses`) to consider a target healthy.]] },
@@ -1439,8 +1735,7 @@ return {
         service. Every upstream can have many targets, and the targets can be
         dynamically added, modified, or deleted. Changes take effect on the fly.
 
-        Because the upstream maintains a history of target changes, the targets cannot
-        be deleted or modified. To disable a target, post a new one with `weight=0`;
+        To disable a target, post a new one with `weight=0`;
         alternatively, use the `DELETE` convenience method to accomplish the same.
 
         The current target object definition is the one with the latest `created_at`.
@@ -1549,7 +1844,7 @@ return {
         }
       },
       ["/upstreams/:upstreams/targets/:targets/healthy"] = {
-        POST = {
+        PUT = {
           title = [[Set target as healthy]],
           description = [[
             Set the current health status of a target in the load balancer to "healthy"
@@ -1564,9 +1859,11 @@ return {
             This resets the health counters of the health checkers running in all workers
             of the Kong node, and broadcasts a cluster-wide message so that the "healthy"
             status is propagated to the whole Kong cluster.
+
+            Note: This API is not available when Kong is running in Hybrid mode.
           ]],
           endpoint = [[
-            <div class="endpoint post indent">/upstreams/{upstream name or id}/targets/{target or id}/healthy</div>
+            <div class="endpoint put indent">/upstreams/{upstream name or id}/targets/{target or id}/healthy</div>
 
             {:.indent}
             Attributes | Description
@@ -1582,7 +1879,7 @@ return {
         }
       },
       ["/upstreams/:upstreams/targets/:targets/unhealthy"] = {
-        POST = {
+        PUT = {
           title = [[Set target as unhealthy]],
           description = [[
             Set the current health status of a target in the load balancer to "unhealthy"
@@ -1602,9 +1899,11 @@ return {
             that the target is actually healthy, it will automatically re-enable it again.
             To permanently remove a target from the balancer, you should [delete a
             target](#delete-target) instead.
+
+            Note: This API is not available when Kong is running in Hybrid mode.
           ]],
           endpoint = [[
-            <div class="endpoint post indent">/upstreams/{upstream name or id}/targets/{target or id}/unhealthy</div>
+            <div class="endpoint put indent">/upstreams/{upstream name or id}/targets/{target or id}/unhealthy</div>
 
             {:.indent}
             Attributes | Description
@@ -1620,7 +1919,7 @@ return {
         }
       },
       ["/upstreams/:upstreams/targets/:targets/:address/healthy"] = {
-        POST = {
+        PUT = {
           title = [[Set target address as healthy]],
           description = [[
             Set the current health status of an individual address resolved by a target
@@ -1634,9 +1933,11 @@ return {
             This resets the health counters of the health checkers running in all workers
             of the Kong node, and broadcasts a cluster-wide message so that the "healthy"
             status is propagated to the whole Kong cluster.
+
+            Note: This API is not available when Kong is running in Hybrid mode.
           ]],
           endpoint = [[
-            <div class="endpoint post indent">/upstreams/{upstream name or id}/targets/{target or id}/{address}/healthy</div>
+            <div class="endpoint put indent">/upstreams/{upstream name or id}/targets/{target or id}/{address}/healthy</div>
 
             {:.indent}
             Attributes | Description
@@ -1653,7 +1954,7 @@ return {
         }
       },
       ["/upstreams/:upstreams/targets/:targets/:address/unhealthy"] = {
-        POST = {
+        PUT = {
           title = [[Set target address as unhealthy]],
           description = [[
             Set the current health status of an individual address resolved by a target
@@ -1672,9 +1973,11 @@ return {
             that the address is actually healthy, it will automatically re-enable it again.
             To permanently remove a target from the balancer, you should [delete a
             target](#delete-target) instead.
+
+            Note: This API is not available when Kong is running in Hybrid mode.
           ]],
           endpoint = [[
-            <div class="endpoint post indent">/upstreams/{upstream name or id}/targets/{target or id}/unhealthy</div>
+            <div class="endpoint put indent">/upstreams/{upstream name or id}/targets/{target or id}/unhealthy</div>
 
             {:.indent}
             Attributes | Description
@@ -1718,7 +2021,66 @@ return {
           },
         },
       },
-    }
+    },
+
+    vaults = {
+      title = "Vaults Entity",
+      entity_title = "Vault",
+      entity_title_plural = "Vaults",
+      description = [[
+        Vault entities are used to configure different Vault connectors. Examples of
+        Vaults are Environment Variables, Hashicorp Vault and AWS Secrets Manager.
+
+        Configuring a Vault allows referencing the secrets with other entities. For
+        example a certificate entity can store a reference to a certificate and key,
+        stored in a vault, instead of storing the certificate and key within the
+        entity. This allows a proper separation of secrets and configuration and
+        prevents secret sprawl.
+      ]],
+
+      fields = {
+        id = { skip = true },
+        created_at = { skip = true },
+        updated_at = { skip = true },
+        name = {
+          description = [[
+            The name of the Vault that's going to be added. Currently, the Vault implementation
+            must be installed in every Kong instance.
+          ]],
+          example = "env",
+        },
+        prefix = {
+          description = [[
+            The unique prefix (or identifier) for this Vault configuration. The prefix
+            is used to load the right Vault configuration and implementation when referencing
+            secrets with the other entities.
+          ]],
+          example = "env",
+        },
+        description = {
+          description = [[
+            The description of the Vault entity.
+          ]],
+          example = "This vault is used to retrieve redis database access credentials",
+        },
+        config = {
+          description = [[
+            The configuration properties for the Vault which can be found on
+            the vaults' documentation page.
+          ]],
+          example = { prefix = "SSL_" },
+        },
+        tags = {
+          description = [[
+            An optional set of strings associated with the Vault for grouping and filtering.
+          ]],
+          examples = {
+            { "database-credentials", "data-plane" },
+            { "certificates", "critical" },
+          },
+        },
+      },
+    },
   },
 
 --------------------------------------------------------------------------------
@@ -1990,7 +2352,7 @@ return {
       ]],
       response = [[
         ```
-        HTTP 201 Created or HTTP 200 OK
+        HTTP 200 OK
         ```
 
         See POST and PATCH responses.
@@ -2007,180 +2369,23 @@ return {
   },
 
 --------------------------------------------------------------------------------
--- Overrides for DB-less mode
+-- DB-less mode
 --------------------------------------------------------------------------------
 
-  dbless = {
-
-    intro = {
-      {
-        text = [[
-          <div class="alert alert-info.blue" role="alert">
-            This page refers to the Admin API for running Kong configured without a
-            database, managing in-memory entities via declarative config.
-            For using the Admin API for Kong with a database, please refer to the
-            <a href="/{{page.kong_version}}/admin-api">Admin API for Database Mode</a> page.
-          </div>
-
-          Kong comes with an **internal** RESTful Admin API for administration purposes.
-          In [DB-less mode][db-less], this Admin API can be used to load a new declarative
-          configuration, and for inspecting the current configuration. In DB-less mode,
-          the Admin API for each Kong node functions independently, reflecting the memory state
-          of that particular Kong node. This is the case because there is no database
-          coordination between Kong nodes.
-
-          - `8001` is the default port on which the Admin API listens.
-          - `8444` is the default port for HTTPS traffic to the Admin API.
-
-          This API provides full control over Kong, so care should be taken when setting
-          up Kong environments to avoid undue public exposure of this API.
-          See [this document][secure-admin-api] for a discussion
-          of methods to secure the Admin API.
-        ]],
-      },
-      {
-        title = [[Supported Content Types]],
-        text = [[
-          The Admin API accepts 3 content types on every endpoint:
-
-          - **application/json**
-
-          Handy for complex bodies (ex: complex plugin configuration), in that case simply send
-          a JSON representation of the data you want to send. Example:
-
-          ```json
-          {
-              "config": {
-                  "limit": 10,
-                  "period": "seconds"
-              }
-          }
-          ```
-
-
-          - **application/x-www-form-urlencoded**
-
-          Simple enough for basic request bodies, you will probably use it most of the time.
-          Note that when sending nested values, Kong expects nested objects to be referenced
-          with dotted keys. Example:
-
-          ```
-          config.limit=10&config.period=seconds
-          ```
-
-
-          - **multipart/form-data**
-
-          Similar to URL-encoded, this content type uses dotted keys to reference nested objects.
-          Here is an example of sending a Lua file to the pre-function Kong plugin:
-
-          ```
-          curl -i -X POST http://localhost:8001/services/plugin-testing/plugins \
-               -F "name=pre-function" \
-               -F "config.functions=@custom-auth.lua"
-          ```
-        ]],
-      },
+  dbless_entities_methods = {
+    -- in DB-less mode, only document GET endpoints for entities
+    ["GET"] = true,
+    ["POST"] = false,
+    ["PATCH"] = false,
+    ["PUT"] = false,
+    ["DELETE"] = false,
+    -- exceptions for the healthcheck endpoints:
+    ["/upstreams/:upstreams/targets/:targets/healthy"] = {
+      ["PUT"] = true,
     },
-
-    footer = [[
-      [clustering]: /{{page.kong_version}}/clustering
-      [cli]: /{{page.kong_version}}/cli
-      [active]: /{{page.kong_version}}/health-checks-circuit-breakers/#active-health-checks
-      [healthchecks]: /{{page.kong_version}}/health-checks-circuit-breakers
-      [secure-admin-api]: /{{page.kong_version}}/secure-admin-api
-      [proxy-reference]: /{{page.kong_version}}/proxy
-      [db-less]: /{{page.kong_version}}/db-less-and-declarative-config
-      [admin-api]: /{{page.kong_version}}/admin-api
-    ]],
-
-    general = {
-      config = {
-        skip = false,
-        title = [[Declarative Configuration]],
-        description = [[
-          Loading the declarative configuration of entities into Kong
-          can be done in two ways: at start-up, through the `declarative_config`
-          property, or at run-time, through the Admin API using the `/config`
-          endpoint.
-
-          To get started using declarative configuration, you need a file
-          (in YAML or JSON format) containing entity definitions. You can
-          generate a sample declarative configuration with the command:
-
-          ```
-          kong config init
-          ```
-
-          It generates a file named `kong.yml` in the current directory,
-          containing the appropriate structure and examples.
-        ]],
-        ["/config"] = {
-          POST = {
-            title = [[Reload declarative configuration]],
-            endpoint = [[
-              <div class="endpoint post indent">/config</div>
-
-              {:.indent}
-              Attributes | Description
-              ---:| ---
-              `config`<br>**required** | The config data (in YAML or JSON format) to be loaded.
-            ]],
-
-            request_query = [[
-              Attributes | Description
-              ---:| ---
-              `check_hash`<br>*optional* | If set to 1, Kong will compare the hash of the input config data against that of the previous one. If the configuration is identical, it will not reload it and will return HTTP 304.
-            ]],
-
-            description = [[
-              This endpoint allows resetting a DB-less Kong with a new
-              declarative configuration data file. All previous contents
-              are erased from memory, and the entities specified in the
-              given file take their place.
-
-              To learn more about the file format, please read the
-              [declarative configuration][db-less] documentation.
-            ]],
-            response = [[
-              ```
-              HTTP 200 OK
-              ```
-
-              ``` json
-              {
-                  { "services": [],
-                    "routes": []
-                  }
-              }
-              ```
-
-              The response contains a list of all the entities that were parsed from the
-              input file.
-            ]]
-          }
-        },
-      },
+    ["/upstreams/:upstreams/targets/:targets/unhealthy"] = {
+      ["PUT"] = true,
     },
-
-    entities = {
-      methods = {
-        -- in DB-less mode, only document GET endpoints for entities
-        ["GET"] = true,
-        ["POST"] = false,
-        ["PATCH"] = false,
-        ["PUT"] = false,
-        ["DELETE"] = false,
-        -- exceptions for the healthcheck endpoints:
-        ["/upstreams/:upstreams/targets/:targets/healthy"] = {
-          ["POST"] = true,
-        },
-        ["/upstreams/:upstreams/targets/:targets/unhealthy"] = {
-          ["POST"] = true,
-        },
-      },
-    }
-
   },
 
 --------------------------------------------------------------------------------
@@ -2191,12 +2396,8 @@ return {
     header = [[
       - title: Admin API
         url: /admin-api/
+        icon: /assets/images/icons/documentation/icn-admin-api-color.svg
         items:
-          - text: DB-less
-            url: /db-less-admin-api
-
-          - text: Declarative Configuration
-            url: /db-less-admin-api/#declarative-configuration
       ]],
   }
 

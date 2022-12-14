@@ -7,7 +7,7 @@ return {
     { config = {
       type = "record",
       fields = {
-        { anonymous = { type = "string", uuid = true, legacy = true }, },
+        { anonymous = { type = "string", uuid = true }, },
         { client_id = { type = "string", required = true }, },
         { client_secret = { type = "string", required = true }, },
         { discovery = { type = "string", required = true, default = "https://.well-known/openid-configuration" }, },

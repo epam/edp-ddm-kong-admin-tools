@@ -1,8 +1,8 @@
 local version = setmetatable({
-  major = 2,
-  minor = 3,
-  patch = 3,
-  --suffix = "",
+  major = 3,
+  minor = 0,
+  patch = 1,
+  --suffix = "-alpha.13"
 }, {
   -- our Makefile during certain releases adjusts this line. Any changes to
   -- the format need to be reflected in both places
@@ -17,9 +17,13 @@ return {
   _VERSION = tostring(version),
   _VERSION_TABLE = version,
   _SERVER_TOKENS = "kong/" .. tostring(version),
+
+  -- unified version string for CE and EE
+  version = tostring(version),
+
   -- third-party dependencies' required version, as they would be specified
   -- to lua-version's `set()` in the form {from, to}
   _DEPENDENCIES = {
-    nginx = { "1.17.8.2" },
+    nginx = { "1.21.4.1" },
   }
 }

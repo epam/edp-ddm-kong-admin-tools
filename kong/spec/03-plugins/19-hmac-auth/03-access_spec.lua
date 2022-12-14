@@ -39,7 +39,7 @@ for _, strategy in helpers.each_strategy() do
         paths = { "/hello.HelloService/" },
         service = assert(bp.services:insert {
           name = "grpc",
-          url = "grpc://localhost:15002",
+          url = helpers.grpcbin_url,
         }),
       })
 
@@ -420,6 +420,24 @@ for _, strategy in helpers.each_strategy() do
         assert.same({ reply = "hello noname" }, cjson.decode(res))
       end)
 
+      it("accepts authorized gRPC calls with @request-target (HTTP/2 test), bug #3789", function()
+        local date = os.date("!%a, %d %b %Y %H:%M:%S GMT")
+        local encodedSignature   = ngx.encode_base64(hmac_sha1_binary("secret", "date: " .. date ..
+                                                                      "\n@request-target: " ..
+                                                                      "post /hello.HelloService/SayHello"))
+        local hmacAuth = [[hmac username="bob",algorithm="hmac-sha1",]]
+          .. [[headers="date @request-target",signature="]] .. encodedSignature .. [["]]
+
+        local ok, res = helpers.proxy_client_grpc(){
+          service = "hello.HelloService.SayHello",
+          opts = {
+            [""] = ("-H 'Date: %s' -H 'Authorization: %s'"):format(date, hmacAuth),
+          },
+        }
+        assert.truthy(ok)
+        assert.same({ reply = "hello noname" }, cjson.decode(res))
+      end)
+
       it("should pass with GET and proxy-authorization", function()
         local date = os.date("!%a, %d %b %Y %H:%M:%S GMT")
         local encodedSignature   = ngx.encode_base64(hmac_sha1_binary("secret", "date: " .. date))
@@ -527,6 +545,29 @@ for _, strategy in helpers.each_strategy() do
             .. date .. "\n" .. "content-md5: md5" .. "\nGET /request HTTP/1.1"))
         local hmacAuth = [[hmac username="bob",  algorithm="hmac-sha1", ]]
           .. [[headers="date content-md5 request-line", signature="]]
+          .. encodedSignature .. [["]]
+        local res = assert(proxy_client:send {
+          method  = "GET",
+          path    = "/request",
+          body    = {},
+          headers = {
+            ["HOST"]                = "hmacauth.com",
+            date                    = date,
+            ["proxy-authorization"] = hmacAuth,
+            authorization           = "hello",
+            ["content-md5"]         = "md5",
+          },
+        })
+        assert.res_status(200, res)
+      end)
+
+      it("should pass with GET with @request-target", function()
+        local date = os.date("!%a, %d %b %Y %H:%M:%S GMT")
+        local encodedSignature = ngx.encode_base64(
+          hmac_sha1_binary("secret", "date: "
+            .. date .. "\n" .. "content-md5: md5" .. "\n@request-target: get /request"))
+        local hmacAuth = [[hmac username="bob",  algorithm="hmac-sha1", ]]
+          .. [[headers="date content-md5 @request-target", signature="]]
           .. encodedSignature .. [["]]
         local res = assert(proxy_client:send {
           method  = "GET",
@@ -818,7 +859,6 @@ for _, strategy in helpers.each_strategy() do
         assert.equal(consumer.id, parsed_body.headers["x-consumer-id"])
         assert.equal(consumer.username, parsed_body.headers["x-consumer-username"])
         assert.equal(credential.username, parsed_body.headers["x-credential-identifier"])
-        assert.equal(credential.username, parsed_body.headers["x-credential-username"])
         assert.is_nil(parsed_body.headers["x-anonymous-consumer"])
       end)
 
@@ -1005,7 +1045,6 @@ for _, strategy in helpers.each_strategy() do
         assert.equal(hmacAuth, body.headers["authorization"])
         assert.equal("bob", body.headers["x-consumer-username"])
         assert.equal(credential.username, body.headers["x-credential-identifier"])
-        assert.equal(credential.username, body.headers["x-credential-username"])
         assert.is_nil(body.headers["x-anonymous-consumer"])
       end)
 
@@ -1090,8 +1129,6 @@ for _, strategy in helpers.each_strategy() do
         assert.equal("true", body.headers["x-anonymous-consumer"])
         assert.equal('no-body', body.headers["x-consumer-username"])
         assert.equal(nil, body.headers["x-credential-identifier"])
-        assert.equal(nil, body.headers["x-credential-username"])
-
       end)
 
       it("should pass with invalid credentials and username in anonymous", function()
@@ -1294,11 +1331,8 @@ for _, strategy in helpers.each_strategy() do
         assert.res_status(200, res)
       end)
 
-      it("should pass with GET with request-line having query param but signed without query param", function()
-        -- hmac-auth needs to validate signatures created both with and without
-        -- query params for a supported deprecation period.
-        --
-        -- Regression for https://github.com/Kong/kong/issues/3672
+      it("should fail with GET with request-line having query param but signed without query param", function()
+        -- hmac-auth signature must include the same query param in request-line: https://github.com/Kong/kong/pull/3339
         local date = os.date("!%a, %d %b %Y %H:%M:%S GMT")
         local encodedSignature = ngx.encode_base64(
           hmac_sha1_binary("secret", "date: "
@@ -1317,7 +1351,7 @@ for _, strategy in helpers.each_strategy() do
             ["content-md5"]         = "md5",
           },
         })
-        assert.res_status(200, res)
+        assert.res_status(401, res)
 
         encodedSignature = ngx.encode_base64(
           hmac_sha1_binary("secret", "date: "
@@ -1336,7 +1370,7 @@ for _, strategy in helpers.each_strategy() do
             ["content-md5"]         = "md5",
           },
         })
-        assert.res_status(200, res)
+        assert.res_status(401, res)
       end)
 
       it("should pass with GET with request-line having query param", function()

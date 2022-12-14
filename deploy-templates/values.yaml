@@ -334,7 +334,7 @@ ingressController:
   enabled: true
   image:
     repository: kong/kubernetes-ingress-controller
-    tag: "1.0"
+    tag: "2.7.0"
   args: []
 
   # Specify Kong Ingress Controller configuration via environment variables

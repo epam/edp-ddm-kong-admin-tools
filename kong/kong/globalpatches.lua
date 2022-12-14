@@ -45,19 +45,60 @@ return function(options)
     -- the resty-lock is based on sleeping while waiting, but that api
     -- is unavailable. Hence we implement a BLOCKING sleep, only in
     -- the init_worker context.
-    local get_phase= ngx.get_phase
+    local get_phase = ngx.get_phase
     local ngx_sleep = ngx.sleep
-    local alternative_sleep = require("socket").sleep
+    local alternative_sleep = function(t)
+      require("socket").sleep(t)
+      -- the ngx sleep will yield and hence update time, this implementation
+      -- does not, so we must force a time update to prevent time based loops
+      -- from getting into a deadlock/spin.
+      -- See https://github.com/Kong/lua-resty-worker-events/issues/41
+      ngx.update_time()
+    end
 
     -- luacheck: globals ngx.sleep
+    local blocking_sleep_phases = {
+      init = true,
+      init_worker = true,
+    }
     ngx.sleep = function(s)
-      if get_phase() == "init_worker" then
+      if blocking_sleep_phases[get_phase()] then
         ngx.log(ngx.NOTICE, "executing a blocking 'sleep' (", s, " seconds)")
         return alternative_sleep(s)
       end
       return ngx_sleep(s)
     end
 
+  end
+
+
+  do
+    _G.native_timer_at = ngx.timer.at
+    _G.native_timer_every = ngx.timer.every
+
+    local _timerng
+
+    if options.cli or options.rbusted then
+      _timerng = require("resty.timerng").new({
+        min_threads = 16,
+        max_threads = 32,
+      })
+
+      _timerng:start()
+
+    else
+      _timerng = require("resty.timerng").new()
+    end
+
+    _G.timerng = _timerng
+
+    _G.ngx.timer.at = function (delay, callback, ...)
+      return _timerng:at(delay, callback, ...)
+    end
+
+    _G.ngx.timer.every = function (interval, callback, ...)
+      return _timerng:every(interval, callback, ...)
+    end
   end
 
 
@@ -410,7 +451,24 @@ return function(options)
     end
 
     -- STEP 5: load code that should be using the patched versions, if any (because of dependency chain)
-    toip = require("resty.dns.client").toip  -- this will load utils and penlight modules for example
-  end
-end
+    do
+      local client = package.loaded["kong.resty.dns.client"]
+      if not client then
+        client = require("kong.tools.dns")()
+      end
 
+      toip = client.toip
+
+      -- DNS query is lazily patched, it will only be wrapped
+      -- when instrumentation module is initialized later and
+      -- `opentelemetry_tracing` includes "dns_query" or set
+      -- to "all".
+      local instrumentation = require "kong.tracing.instrumentation"
+      instrumentation.set_patch_dns_query_fn(toip, function(wrap)
+        toip = wrap
+      end)
+    end
+  end
+
+  require "kong.deprecation".init(options.cli)
+end

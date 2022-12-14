@@ -25,17 +25,17 @@ local plugins = {
   "bot-detection",
   "aws-lambda",
   "request-termination",
-  -- external plugins
-  "azure-functions",
-  "zipkin",
-  "pre-function",
-  "post-function",
   "prometheus",
   "proxy-cache",
   "session",
   "acme",
-  "grpc-web",
   "grpc-gateway",
+  "grpc-web",
+  "pre-function",
+  "post-function",
+  "azure-functions",
+  "zipkin",
+  "opentelemetry",
 }
 
 local plugin_map = {}
@@ -50,12 +50,29 @@ for _, plugin in ipairs(deprecated_plugins) do
   deprecated_plugin_map[plugin] = true
 end
 
+local vaults = {
+  "env",
+}
+
+local vault_map = {}
+for i = 1, #vaults do
+  vault_map[vaults[i]] = true
+end
+
+local deprecated_vaults = {} -- no currently deprecated vaults
+
+local deprecated_vault_map = {}
+for _, vault in ipairs(deprecated_vaults) do
+  deprecated_vault_map[vault] = true
+end
+
 local protocols_with_subsystem = {
   http = "http",
   https = "http",
   tcp = "stream",
   tls = "stream",
   udp = "stream",
+  tls_passthrough = "stream",
   grpc = "http",
   grpcs = "http",
 }
@@ -68,6 +85,8 @@ table.sort(protocols)
 local constants = {
   BUNDLED_PLUGINS = plugin_map,
   DEPRECATED_PLUGINS = deprecated_plugin_map,
+  BUNDLED_VAULTS = vault_map,
+  DEPRECATED_VAULTS = deprecated_vault_map,
   -- non-standard headers, specific to Kong
   HEADERS = {
     HOST_OVERRIDE = "X-Host-Override",
@@ -79,7 +98,6 @@ local constants = {
     CONSUMER_ID = "X-Consumer-ID",
     CONSUMER_CUSTOM_ID = "X-Consumer-Custom-ID",
     CONSUMER_USERNAME = "X-Consumer-Username",
-    CREDENTIAL_USERNAME = "X-Credential-Username", -- TODO: deprecated, use CREDENTIAL_IDENTIFIER instead
     CREDENTIAL_IDENTIFIER = "X-Credential-Identifier",
     RATELIMIT_LIMIT = "X-RateLimit-Limit",
     RATELIMIT_REMAINING = "X-RateLimit-Remaining",
@@ -111,6 +129,7 @@ local constants = {
     "ca_certificates",
     "clustering_data_planes",
     "parameters",
+    "vaults",
   },
   ENTITY_CACHE_STORE = setmetatable({
     consumers = "cache",
@@ -123,6 +142,7 @@ local constants = {
     plugins = "core_cache",
     tags = "cache",
     ca_certificates = "core_cache",
+    vaults = "core_cache",
   }, {
     __index = function()
       return "cache"
@@ -140,7 +160,7 @@ local constants = {
   },
   REPORTS = {
     ADDRESS = "kong-hf.konghq.com",
-    STATS_PORT = 61830
+    STATS_TLS_PORT = 61833,
   },
   DICTS = {
     "kong",
@@ -164,14 +184,9 @@ local constants = {
   PROTOCOLS = protocols,
   PROTOCOLS_WITH_SUBSYSTEM = protocols_with_subsystem,
 
-  DECLARATIVE_FLIPS = {
-    name = "declarative:flips",
-    ttl = 60,
-  },
-
-  DECLARATIVE_PAGE_KEY = "declarative:page",
   DECLARATIVE_LOAD_KEY = "declarative_config:loaded",
   DECLARATIVE_HASH_KEY = "declarative_config:hash",
+  DECLARATIVE_EMPTY_CONFIG_HASH = string.rep("0", 32),
 
   CLUSTER_ID_PARAM_KEY = "cluster_id",
 
@@ -182,6 +197,11 @@ local constants = {
     { PLUGIN_SET_INCOMPATIBLE     = "plugin_set_incompatible", },
     { PLUGIN_VERSION_INCOMPATIBLE = "plugin_version_incompatible", },
   },
+  CLUSTERING_TIMEOUT = 5000, -- 5 seconds
+  CLUSTERING_PING_INTERVAL = 30, -- 30 seconds
+  CLUSTERING_OCSP_TIMEOUT = 5000, -- 5 seconds
+
+  CLEAR_HEALTH_STATUS_DELAY = 300, -- 300 seconds
 }
 
 for _, v in ipairs(constants.CLUSTERING_SYNC_STATUS) do

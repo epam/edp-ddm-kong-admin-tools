@@ -130,6 +130,7 @@ describe("services", function()
         connect_timeout = 1,
         read_timeout    = 10,
         write_timeout   = 100,
+        enabled         = true,
       }
 
       local ok, err = Services:validate(service)
@@ -214,6 +215,7 @@ describe("services", function()
         port = 80,
         protocol = "http",
         path = "/hello/path$with$!&'()*+,;=stuff",
+        enabled = true,
       }
 
       local ok, err = Services:validate(service)
@@ -252,6 +254,7 @@ describe("services", function()
         host = "example.com",
         path = "/",
         port = 80,
+        enabled = true,
       }
 
       local ok, err = Services:validate(service)
@@ -265,6 +268,7 @@ describe("services", function()
         host = "example.com",
         path = "/abcd~user~2",
         port = 80,
+        enabled = true,
       }
 
       local ok, err = Services:validate(service)
@@ -281,6 +285,7 @@ describe("services", function()
           host = "example.com",
           path = valid_paths[i],
           port = 80,
+          enabled = true,
         }
 
         local ok, err = Services:validate(service)
@@ -295,6 +300,7 @@ describe("services", function()
         host = "example.com",
         path = "/ovo/",
         port = 80,
+        enabled = true,
       }
 
       local ok, err = Services:validate(service)
@@ -329,7 +335,6 @@ describe("services", function()
       local invalid_hosts = {
         "/example",
         ".example",
-        "example.",
         "example:",
         "mock;bin",
         "example.com/org",
@@ -388,6 +393,7 @@ describe("services", function()
         "hello.abcd",
         "example_api.com",
         "localhost",
+        "example.test.",
         -- below:
         -- punycode examples from RFC3492;
         -- https://tools.ietf.org/html/rfc3492#page-14
@@ -407,6 +413,7 @@ describe("services", function()
           protocol = "http",
           host = valid_hosts[i],
           port = 80,
+          enabled = true,
         }
 
         local ok, err = Services:validate(service)
@@ -480,7 +487,8 @@ describe("services", function()
           protocol = "http",
           host = "example.com",
           port = 80,
-          name = valid_names[i]
+          name = valid_names[i],
+          enabled = true,
         }
 
         local ok, err = Services:validate(service)
@@ -496,6 +504,7 @@ describe("services", function()
         protocol = "tcp",
         host = "x.y",
         port = 80,
+        enabled = true,
       }
 
       local ok, err = Services:validate(service)
@@ -508,6 +517,7 @@ describe("services", function()
         protocol = "tls",
         host = "x.y",
         port = 80,
+        enabled = true,
       }
 
       local ok, err = Services:validate(service)
@@ -520,6 +530,7 @@ describe("services", function()
         protocol = "udp",
         host = "x.y",
         port = 80,
+        enabled = true,
       }
 
       local ok, err = Services:validate(service)
@@ -532,6 +543,7 @@ describe("services", function()
         protocol = "grpc",
         host = "x.y",
         port = 80,
+        enabled = true,
       }
 
       local ok, err = Services:validate(service)
@@ -544,6 +556,7 @@ describe("services", function()
         protocol = "grpcs",
         host = "x.y",
         port = 80,
+        enabled = true,
       }
 
       local ok, err = Services:validate(service)
@@ -558,6 +571,7 @@ describe("services", function()
           host = "x.y",
           port = 80,
           path = "/",
+          enabled = true,
         }
 
         local ok, errs = Services:validate(service)

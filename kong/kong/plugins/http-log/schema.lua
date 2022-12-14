@@ -9,7 +9,7 @@ return {
         type = "record",
         fields = {
           -- NOTE: any field added here must be also included in the handler's get_queue_id method
-          { http_endpoint = typedefs.url({ required = true }) },
+          { http_endpoint = typedefs.url({ required = true, encrypted = true }) }, -- encrypted = true is a Kong-Enterprise exclusive feature, does nothing in Kong CE
           { method = { type = "string", default = "POST", one_of = { "POST", "PUT", "PATCH" }, }, },
           { content_type = { type = "string", default = "application/json", one_of = { "application/json" }, }, },
           { timeout = { type = "number", default = 10000 }, },
@@ -17,7 +17,8 @@ return {
           { retry_count = { type = "integer", default = 10 }, },
           { queue_size = { type = "integer", default = 1 }, },
           { flush_timeout = { type = "number", default = 2 }, },
-          { headers = typedefs.headers {
+          { headers = {
+            type = "map",
             keys = typedefs.header_name {
               match_none = {
                 {
@@ -34,7 +35,11 @@ return {
                 },
               },
             },
-          } },
+            values = {
+              type = "string",
+            },
+          }},
+          { custom_fields_by_lua = typedefs.lua_code },
         },
         custom_validator = function(config)
           -- check no double userinfo + authorization header

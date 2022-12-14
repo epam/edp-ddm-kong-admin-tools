@@ -15,5 +15,13 @@ rules:
       - get
       - list
       - watch
+  - apiGroups:
+      - "networking.k8s.io"
+    resources:
+      - ingressclasses
+    verbs:
+      - get
+      - watch
+      - list
 {{- end -}}
 {{- end }}
