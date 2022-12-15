@@ -2,6 +2,10 @@ local cjson = require("cjson")
 
 local M = {}
 
+local function isempty(s)
+  return s == nil or s == ''
+end
+
 local function parseFilters(csvFilters)
   local filters = {}
   if (not (csvFilters == nil)) then
@@ -12,12 +16,28 @@ local function parseFilters(csvFilters)
   return filters
 end
 
+local function decodeBase64(str)
+  local decoded_str = ngx.decode_base64(str)
+  if not decoded_str then
+    utils.exit(500, "invalid OIDC plugin configuration, base64 string could not be decoded", ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR))
+  end
+  return decoded_str
+end
+
 local function getSessionOpts(jsonStr)
-  local sessionOpts
-  if (not (jsonStr == nil)) then
+  local sessionOpts = {}
+  if (not isempty(jsonStr)) then
     -- TODO Handle JSON parsing errors
     sessionOpts = cjson.decode(jsonStr)
   end
+  --set session secret from env. var if present
+  local session_secret = os.getenv("OIDC_SESSION_SECRET")
+  if (not isempty(session_secret)) then
+    sessionOpts.secret = session_secret
+  elseif (not isempty(sessionOpts.secret)) then
+    sessionOpts.secret = decodeBase64(sessionOpts.secret)
+  end
+
   return sessionOpts
 end
 
@@ -59,7 +79,7 @@ function M.get_options(config, ngx)
     introspection_endpoint_auth_method = config.introspection_endpoint_auth_method,
     bearer_only = config.bearer_only,
     realm = config.realm,
-	  redirect_uri_path = config.redirect_uri_path or M.get_redirect_uri_path(ngx),
+    redirect_uri_path = config.redirect_uri_path or M.get_redirect_uri_path(ngx),
     --redirect_uri = config.redirect_uri or ngx.var.request_uri,
     scope = config.scope,
     response_type = config.response_type,
@@ -69,13 +89,13 @@ function M.get_options(config, ngx)
     filters = parseFilters(config.filters),
     logout_path = config.logout_path,
     redirect_after_logout_uri = config.redirect_after_logout_uri,
-	  unauth_action = config.unauth_action,
-	  access_token_header_name = config.access_token_header_name,
-	  bearer_access_token = config.bearer_access_token,
-	  id_token_header_name = config.id_token_header_name,
-	  user_header_name = config.user_header_name,
-	  revoke_tokens_on_logout = config.revoke_tokens_on_logout,
-	  session_opts = getSessionOpts(config.session_opts),
+    unauth_action = config.unauth_action,
+    access_token_header_name = config.access_token_header_name,
+    bearer_access_token = config.bearer_access_token,
+    id_token_header_name = config.id_token_header_name,
+    user_header_name = config.user_header_name,
+    revoke_tokens_on_logout = config.revoke_tokens_on_logout,
+    session_opts = getSessionOpts(config.session_opts),
     access_token_expires_leeway = config.access_token_expires_leeway,
     post_logout_redirect_uri = config.post_logout_redirect_uri,
     --Authorization properties
@@ -123,7 +143,7 @@ function M.has_bearer_access_token()
   local header = ngx.req.get_headers()['Authorization']
   if header and header:find(" ") then
     local divider = header:find(' ')
-    if string.lower(header:sub(0, divider-1)) == string.lower("Bearer") then
+    if string.lower(header:sub(0, divider - 1)) == string.lower("Bearer") then
       return true
     end
   end
@@ -134,8 +154,8 @@ function M.get_bearer_access_token()
   local header = ngx.req.get_headers()['Authorization']
   if header and header:find(" ") then
     local divider = header:find(' ')
-    if string.lower(header:sub(0, divider-1)) == string.lower("Bearer") then
-      return header:sub(divider+1)
+    if string.lower(header:sub(0, divider - 1)) == string.lower("Bearer") then
+      return header:sub(divider + 1)
     end
   end
   return nil
