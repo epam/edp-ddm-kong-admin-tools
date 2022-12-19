@@ -9,5 +9,5 @@ maintainers:
   name: hbagdi
 - email: traines@konghq.com
   name: rainest
-name: kong
+name: kong-admin-tools
 version: 1.12.0

@@ -1,0 +1,17 @@
+{{- if not (lookup "networking.k8s.io/v1" "IngressClass" "" .Values.ingressController.ingressClass) }}
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: {{ .Values.ingressController.ingressClass }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kong.metaLabels" . | nindent 4 }}
+  {{- if .Values.proxy.ingress.annotations }}
+  annotations:
+  {{- range $key, $value := .Values.proxy.ingress.annotations }}
+    {{ $key }}: {{ $value | quote }}
+  {{- end }}
+  {{- end }}
+spec:
+  controller: ingress-controllers.konghq.com/kong
+{{- end -}}
