@@ -790,6 +790,6 @@ extraSecrets: []
 
 kongIngress:
   name: kong-admin-tools-set-timeouts
-  connect_timeout: 29000
-  read_timeout: 29000
-  write_timeout: 29000
+  connect_timeout: 60000
+  read_timeout: 60000
+  write_timeout: 60000
