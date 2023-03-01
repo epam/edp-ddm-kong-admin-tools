@@ -53,6 +53,11 @@ Create the name of the service account to use
 {{- end -}}
 {{- end -}}
 
+{{- define "kong.clusterRoleName" -}}
+{{- $name :=  .Values.ingressController.clusterRole.name -}}
+{{- printf "%s-%s" $name .Release.Namespace -}}
+{{- end -}}
+
 {{/*
 Create KONG_SERVICE_LISTEN strings
 Generic tool for creating KONG_PROXY_LISTEN, KONG_ADMIN_LISTEN, etc.
