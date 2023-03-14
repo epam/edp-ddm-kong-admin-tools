@@ -1,8 +1,9 @@
+{{- if not (lookup "rbac.authorization.k8s.io/v1" "ClusterRole" "" .Values.ingressController.clusterRole.name) }}
 {{- if .Values.ingressController.clusterRole.create -}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name:  {{ template "kong.clusterRoleName" . }}
+  name:  {{ .Values.ingressController.clusterRole.name }}
   annotations:
     "helm.sh/resource-policy": keep
 rules:
@@ -31,3 +32,4 @@ rules:
     verbs:
       - list
 {{- end -}}
+{{- end }}

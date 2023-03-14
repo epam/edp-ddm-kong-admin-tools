@@ -7,7 +7,7 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ template "kong.clusterRoleName" . }}
+  name:  {{ .Values.ingressController.clusterRole.name }}
 subjects:
   - kind: ServiceAccount
     name: {{ template "kong.serviceAccountName" . }}
