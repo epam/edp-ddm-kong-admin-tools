@@ -50,13 +50,16 @@ deployment:
 # Values here take precedence over values from other sections of values.yaml,
 # e.g. setting pg_user here will override the value normally set when postgresql.enabled
 # is set below. In general, you should not set values here if they are set elsewhere.
+logging:
+  kong:
+    accessLogsEnabled: false
 env:
   headers: "off"
   nginx_worker_processes: "2"
-  proxy_access_log: /dev/stdout
-  admin_access_log: /dev/stdout
-  admin_gui_access_log: /dev/stdout
-  portal_api_access_log: /dev/stdout
+  proxy_access_log: "off"
+  admin_access_log: "off"
+  admin_gui_access_log: "off"
+  portal_api_access_log: "off"
   proxy_error_log: /dev/stderr
   admin_error_log: /dev/stderr
   admin_gui_error_log: /dev/stderr
@@ -71,7 +74,7 @@ env:
   nginx_main_env: REDIS_AUTH_SECRET; env OIDC_SESSION_SECRET
   # Level of logging for the controller. Allowed values are
   # trace, debug, info, warn, error, fatal and panic. (default "info")
-  log_level: info
+  log_level: warn
 
 # Specify Kong's Docker image and repository details here
 image:

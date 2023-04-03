@@ -627,7 +627,13 @@ TODO: remove legacy admin listen behavior at a future date
 */}}
 
 {{- $userEnv := dict -}}
+{{- $kongAccessLogsEnabled := .Values.logging.kong.accessLogsEnabled -}}
 {{- range $key, $val := .Values.env }}
+  {{- if $kongAccessLogsEnabled -}}
+  {{- if or (eq $key "proxy_access_log") (eq $key "admin_access_log") (eq $key "admin_gui_access_log") (eq $key "portal_api_access_log") }}
+  {{- $val = "/dev/stdout" }}
+  {{- end -}}
+  {{- end -}}
   {{- $upper := upper $key -}}
   {{- $var := printf "KONG_%s" $upper -}}
   {{- $_ := set $userEnv $var $val -}}
