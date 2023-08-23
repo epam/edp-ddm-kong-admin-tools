@@ -1,8 +1,6 @@
 [submodule "lua-kong-nginx-module"]
 	path = lua-kong-nginx-module
 	url = git@github.com:Kong/lua-kong-nginx-module.git
-	branch = a2829b19eddd1bef97b603a1a674b4d4518834a4
 [submodule "lua-resty-lmdb"]
 	path = lua-resty-lmdb
 	url = git@github.com:lisfo4ka/lua-resty-lmdb.git
-	branch = "fix-kong"
