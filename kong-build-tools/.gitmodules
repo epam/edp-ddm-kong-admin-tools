@@ -5,4 +5,4 @@
 [submodule "lua-resty-lmdb"]
 	path = lua-resty-lmdb
 	url = git@github.com:Kong/lua-resty-lmdb.git
-	branch = 8fcd4def4aa85b2f915ff6e15e03ecc49c472bd3
+	branch = "1.2.0"
