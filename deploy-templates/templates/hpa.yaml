@@ -1,5 +1,4 @@
-{{- if .Values.autoscaling.enabled }}
-{{- if not .Values.global.disableRequestsLimits }}
+{{- if .Values.global.registry.kong.hpa.enabled }}
 kind: HorizontalPodAutoscaler
 apiVersion: autoscaling/v2beta2
 metadata:
@@ -11,8 +10,8 @@ spec:
     kind: Deployment
     name: {{ template "kong.fullname" . }}
     apiVersion: apps/v1
-  minReplicas: 1
-  maxReplicas: 3
+  minReplicas: {{ .Values.global.registry.kong.hpa.minReplicas }}
+  maxReplicas: {{ .Values.global.registry.kong.hpa.maxReplicas }}
   metrics:
     - type: Resource
       resource:
@@ -26,5 +25,4 @@ spec:
         target:
           type: Utilization
           averageUtilization: 90
-{{- end }}
 {{- end }}

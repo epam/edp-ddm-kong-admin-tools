@@ -14,8 +14,8 @@ metadata:
   {{- end }}
   {{- end }}
 spec:
-  {{- if not .Values.autoscaling.enabled }}
-  replicas: {{ .Values.replicaCount }}
+  {{- if not .Values.global.registry.kong.hpa.enabled }}
+  replicas: {{ .Values.global.registry.kong.replicas }}
   {{- end }}
   selector:
     matchLabels:
@@ -240,10 +240,10 @@ spec:
 {{ toYaml .Values.readinessProbe | indent 10 }}
         livenessProbe:
 {{ toYaml .Values.livenessProbe | indent 10 }}
-        {{- if not .Values.global.disableRequestsLimits }}
+    {{- if or .Values.global.registry.kong.container.resources.requests .Values.global.registry.kong.container.resources.limits }}
         resources:
 {{ toYaml .Values.global.registry.kong.container.resources | indent 10 }}
-        {{- end }}
+    {{- end }}
     {{- if .Values.affinity }}
       affinity:
 {{ toYaml .Values.affinity | indent 8 }}

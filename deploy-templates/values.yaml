@@ -10,17 +10,23 @@
 # - Kong Enterprise parameters
 
 global:
-  disableRequestsLimits: false
   registry:
     kong:
+      replicas: 1
+      hpa:
+        enabled: false
+        minReplicas: 1
+        maxReplicas: 3
       istio:
         sidecar:
           enabled: true
           resources:
-            limits: {}
             requests: {}
+            limits: {}
       container:
-        resources: {}
+        resources:
+          requests: {}
+          limits: {}
 
 # -----------------------------------------------------------------------------
 # Deployment parameters
@@ -507,30 +513,10 @@ podAnnotations: {}
 # Labels to be added to Kong pods
 podLabels: {}
 
-# Kong pod count.
-# It has no effect when autoscaling.enabled is set to true
-replicaCount: 1
-
 # Annotations to be added to Kong deployment
 deploymentAnnotations:
   kuma.io/gateway: enabled
   traffic.sidecar.istio.io/includeInboundPorts: ""
-
-# Enable autoscaling using HorizontalPodAutoscaler
-autoscaling:
-  enabled: false
-  minReplicas: 2
-  maxReplicas: 5
-  ## targetCPUUtilizationPercentage only used if the cluster doesn't support autoscaling/v2beta
-  targetCPUUtilizationPercentage:
-  ## Otherwise for clusters that do support autoscaling/v2beta, use metrics
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 80
 
 # Kong Pod Disruption Budget
 podDisruptionBudget:
