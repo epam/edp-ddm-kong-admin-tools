@@ -262,7 +262,7 @@ function storage:destroy(id)
 
     local key = self:key(id)
 
-    ok, err = self:delete(key)
+    ok, err = self:ttl(key, 60)
 
     self:unlock(key)
     self:set_keepalive()

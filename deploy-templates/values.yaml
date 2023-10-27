@@ -10,9 +10,20 @@
 # - Kong Enterprise parameters
 
 global:
+  container:
+    requestsLimitsEnabled: true
+  istio:
+    sidecar:
+      requestsLimitsEnabled: true
+      resources:
+        requests: {}
+        limits: {}
   registry:
-    kong:
-      replicas: 1
+    kongAdminTools:
+      container:
+        resources:
+          requests: {}
+          limits: {}
       hpa:
         enabled: false
         minReplicas: 1
@@ -23,10 +34,7 @@ global:
           resources:
             requests: {}
             limits: {}
-      container:
-        resources:
-          requests: {}
-          limits: {}
+      replicas: 1
 
 # -----------------------------------------------------------------------------
 # Deployment parameters

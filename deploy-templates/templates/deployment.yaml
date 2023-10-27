@@ -14,8 +14,8 @@ metadata:
   {{- end }}
   {{- end }}
 spec:
-  {{- if not .Values.global.registry.kong.hpa.enabled }}
-  replicas: {{ .Values.global.registry.kong.replicas }}
+  {{- if not .Values.global.registry.kongAdminTools.hpa.enabled }}
+  replicas: {{ .Values.global.registry.kongAdminTools.replicas }}
   {{- end }}
   selector:
     matchLabels:
@@ -27,7 +27,7 @@ spec:
 
   template:
     metadata:
-      {{- if or (.Values.podAnnotations) (.Values.global.registry.kong.istio.sidecar.enabled) (.Values.ingressController.admissionWebhook.enabled) (and (not .Values.ingressController.enabled) (eq .Values.env.database "off" )) }}
+      {{- if or (.Values.podAnnotations) (.Values.global.registry.kongAdminTools.istio.sidecar.enabled) (.Values.ingressController.admissionWebhook.enabled) (and (not .Values.ingressController.enabled) (eq .Values.env.database "off" )) }}
       annotations:
         {{- if .Values.ingressController.admissionWebhook.enabled }}
         checksum/admission-webhook.yaml: {{ include (print $.Template.BasePath "/admission-webhook.yaml") . | sha256sum }}
@@ -42,10 +42,14 @@ spec:
         {{ $key }}: {{ $value | quote }}
         {{- end }}
         {{- end }}
-        {{- if .Values.global.registry.kong.istio.sidecar.enabled }}
+        {{- if .Values.global.registry.kongAdminTools.istio.sidecar.enabled }}
         sidecar.istio.io/inject: "true"
         traffic.sidecar.istio.io/excludeOutboundPorts: '5432,6379'
+        {{- if .Values.global.istio.sidecar.requestsLimitsEnabled }}
         {{- include "kong.istioResources" . | nindent 8 }}
+        {{- else }}
+        inject.istio.io/templates: 'sidecar,emptyRequestsLimits'
+        {{- end }}
         {{- end }}
         {{- end }}
       labels:
@@ -240,9 +244,9 @@ spec:
 {{ toYaml .Values.readinessProbe | indent 10 }}
         livenessProbe:
 {{ toYaml .Values.livenessProbe | indent 10 }}
-    {{- if or .Values.global.registry.kong.container.resources.requests .Values.global.registry.kong.container.resources.limits }}
+    {{- if .Values.global.container.requestsLimitsEnabled }}
         resources:
-{{ toYaml .Values.global.registry.kong.container.resources | indent 10 }}
+{{ toYaml .Values.global.registry.kongAdminTools.container.resources | indent 10 }}
     {{- end }}
     {{- if .Values.affinity }}
       affinity:
