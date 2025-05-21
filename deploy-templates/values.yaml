@@ -85,7 +85,7 @@ env:
   nginx_proxy_proxy_buffers: 8 512k
   nginx_http_large_client_header_buffers: 16 512k
   nginx_http_client_header_buffer_size: 256k
-  nginx_main_env: REDIS_AUTH_SECRET; env OIDC_SESSION_SECRET
+  nginx_main_env: REDIS_AUTH_USER; env REDIS_AUTH_SECRET; env OIDC_SESSION_SECRET
   # Level of logging for the controller. Allowed values are
   # trace, debug, info, warn, error, fatal and panic. (default "info")
   log_level: warn
@@ -525,6 +525,7 @@ podLabels: {}
 deploymentAnnotations:
   kuma.io/gateway: enabled
   traffic.sidecar.istio.io/includeInboundPorts: ""
+  secret.reloader.stakater.com/reload: "redis-kong-admin-tools-user-secret"
 
 # Kong Pod Disruption Budget
 podDisruptionBudget:
